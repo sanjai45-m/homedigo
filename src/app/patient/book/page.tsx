@@ -338,6 +338,10 @@ function BookServiceContent() {
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Could not create your appointment. Please try again.');
+        return;
+      }
       if (data.booking?.id) {
         router.push(`/patient/appointments/${data.booking.id}`);
       } else {
@@ -345,7 +349,7 @@ function BookServiceContent() {
       }
     } catch (err) {
       console.error('Booking checkout error:', err);
-      router.push('/patient/appointments');
+      alert('Could not create your appointment. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

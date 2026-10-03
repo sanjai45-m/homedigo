@@ -44,6 +44,8 @@ export default function PartnerDashboardPage() {
   const [partner, setPartner] = useState<any>(null);
   const [visits, setVisits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
 
   const fetchDashboard = async () => {
@@ -51,12 +53,31 @@ export default function PartnerDashboardPage() {
       setLoading(true);
       const res = await fetch('/api/pro/dashboard');
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load appointments.');
       if (data.partner) setPartner(data.partner);
       if (data.visits) setVisits(data.visits);
     } catch (e) {
       console.error(e);
+      setNotice(e instanceof Error ? e.message : 'Could not load appointments.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const confirmAppointment = async (id: string) => {
+    if (confirmingId) return;
+    setConfirmingId(id);
+    setNotice('');
+    try {
+      const response = await fetch(`/api/pro/visits/${encodeURIComponent(id)}/confirm`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not confirm appointment.');
+      setVisits(current => current.map(visit => visit.id === id ? { ...visit, ...data.visit } : visit));
+      setNotice(data.message);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not confirm appointment. Please retry.');
+    } finally {
+      setConfirmingId(null);
     }
   };
 
@@ -65,7 +86,7 @@ export default function PartnerDashboardPage() {
   }, []);
 
   const activeVisits = visits.filter((v) =>
-    ['ON_THE_WAY', 'ASSIGNED', 'IN_PROGRESS', 'ARRIVED'].includes(v.status)
+    ['PENDING', 'CONFIRMED', 'ON_THE_WAY', 'ASSIGNED', 'IN_PROGRESS', 'ARRIVED'].includes(v.status)
   );
   const completedVisits = visits.filter((v) => v.status === 'COMPLETED');
   const displayedVisits =
@@ -75,7 +96,7 @@ export default function PartnerDashboardPage() {
       ? activeVisits
       : completedVisits;
 
-  const activeVisit = activeVisits[0]; // primary active visit for banner
+  const activeVisit = visits.find(visit => visit.status === 'ON_THE_WAY');
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-fadeIn">
@@ -116,6 +137,7 @@ export default function PartnerDashboardPage() {
       </div>
 
       {/* KPI Cards */}
+      {notice && <p role="status" className="p-4 rounded-xl bg-teal-50 text-teal-900 border border-teal-200 text-sm">{notice}</p>}
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
@@ -299,13 +321,29 @@ export default function PartnerDashboardPage() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
+                <div className="flex flex-wrap items-center gap-3 shrink-0">
                   <div className="text-right">
+                    <div className="text-xs text-slate-500">{v.scheduled_date} (IST)</div>
                     <div className="text-xs text-slate-500">{v.scheduled_time_slot}</div>
                     <div className="text-base font-extrabold text-slate-900">
                       ₹{v.total_amount}
                     </div>
                   </div>
+                  {!v.doctor_confirmed_at && ['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(v.status) && (
+                    <button
+                      type="button"
+                      disabled={confirmingId !== null}
+                      onClick={() => confirmAppointment(v.id)}
+                      className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
+                    >
+                      {confirmingId === v.id ? 'Confirming...' : 'Confirm Availability'}
+                    </button>
+                  )}
+                  {v.doctor_confirmed_at && (
+                    <span className="text-xs font-semibold text-teal-700 flex items-center gap-1">
+                      <CheckCircle2 className="w-4 h-4" /> Availability confirmed
+                    </span>
+                  )}
                   <Link
                     href={`/partner/visit/${v.id}`}
                     className="p-2.5 rounded-xl bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-700 transition-colors"

@@ -155,7 +155,7 @@ export default function AppointmentsListPage() {
                 }`}>
                   <Clock className="w-3.5 h-3.5" />
                   <span>
-                    {b.status === 'ON_THE_WAY' ? 'Clinician On The Way' : b.status === 'COMPLETED' ? 'Visit Completed' : b.status}
+                    {b.status === 'PENDING' ? 'Awaiting Doctor Confirmation' : b.status === 'ON_THE_WAY' ? 'Clinician On The Way' : b.status === 'COMPLETED' ? 'Visit Completed' : b.status}
                   </span>
                 </span>
               </div>

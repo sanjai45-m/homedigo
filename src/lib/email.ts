@@ -153,7 +153,7 @@ function sendAppointmentUpdate(params: AppointmentEmailParams, reminder: boolean
   const portalUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://homedigo.vercel.app').replace(/\/$/, '');
   const title = reminder ? 'Your appointment is starting soon' : 'Your appointment is confirmed';
   const message = reminder
-    ? 'Your confirmed appointment starts in approximately 15 minutes. Please prepare for your visit.'
+    ? 'Your confirmed appointment starts soon. Please prepare for your visit at the scheduled time below.'
     : `${params.doctorName} has confirmed availability for your appointment.`;
   const path = reminder ? '/partner/dashboard' : `/patient/appointments/${encodeURIComponent(params.bookingId)}`;
   const text = `${title}\n\n${message}\nBooking: ${params.bookingNumber}\nPatient: ${params.patientName}\nDoctor: ${params.doctorName}\nService: ${params.serviceTitle}\nDate: ${params.scheduledDate}\nTime: ${params.scheduledTimeSlot} (IST)\n\nView appointment: ${portalUrl}${path}`;

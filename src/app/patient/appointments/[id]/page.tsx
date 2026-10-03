@@ -161,8 +161,8 @@ export default function AppointmentDetailPage() {
         {/* Progress Tracker Skeleton */}
         <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
           <div className="h-4 w-40 bg-slate-200 rounded" />
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            {[1, 2, 3, 4, 5, 6].map((i) => (
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+            {[1, 2, 3, 4, 5, 6, 7].map((i) => (
               <div key={i} className="h-14 bg-slate-100 rounded-xl" />
             ))}
           </div>
@@ -200,8 +200,9 @@ export default function AppointmentDetailPage() {
   const b = booking;
 
   const steps = [
-    { key: 'CONFIRMED', label: 'Payment Confirmed' },
+    { key: 'PENDING', label: 'Awaiting Doctor' },
     { key: 'ASSIGNED', label: 'Clinician Assigned' },
+    { key: 'CONFIRMED', label: 'Doctor Confirmed' },
     { key: 'ON_THE_WAY', label: 'On The Way' },
     { key: 'ARRIVED', label: 'Arrived at Doorstep' },
     { key: 'IN_PROGRESS', label: 'Care In Progress' },
@@ -209,7 +210,7 @@ export default function AppointmentDetailPage() {
   ];
 
   const currentStepIdx = steps.findIndex((s) => s.key === b.status);
-  const activeStepIdx = currentStepIdx === -1 ? (b.status === 'COMPLETED' ? 5 : 2) : currentStepIdx;
+  const activeStepIdx = currentStepIdx;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-200">
@@ -310,7 +311,7 @@ export default function AppointmentDetailPage() {
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
           {steps.map((step, idx) => {
             const isPassed = activeStepIdx >= idx;
             const isCurrent = activeStepIdx === idx;

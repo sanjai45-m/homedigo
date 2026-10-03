@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 
 export const maxDuration = 60;
 
@@ -23,17 +26,28 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!['ADMIN', 'SUPER_ADMIN'].includes((session?.user as { role?: string })?.role || '')) {
+      return NextResponse.json({ error: 'Administrator access required.' }, { status: 403 });
+    }
     const body = await request.json();
     const { bookingId, status, partnerId, partnerName, partnerTitle } = body;
 
     if (!bookingId) {
       return NextResponse.json({ error: 'Booking ID is required' }, { status: 400 });
     }
+    if (status === 'CONFIRMED') {
+      return NextResponse.json({ error: 'The assigned doctor must confirm availability from their dashboard.' }, { status: 400 });
+    }
 
     if (isDbConfigured) {
+      await ensureAppointmentSchema();
       const updateRes = await executeQuery(
         `UPDATE bookings
-         SET status = COALESCE($1, status),
+         SET status = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN 'ASSIGNED'
+                           ELSE COALESCE($1, status) END,
+             doctor_confirmed_at = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL
+                                        ELSE doctor_confirmed_at END,
              partner_id = COALESCE($2, partner_id),
              partner_name = COALESCE($3, partner_name),
              partner_title = COALESCE($4, partner_title)

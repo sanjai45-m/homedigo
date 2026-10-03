@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: Request,
@@ -46,8 +48,16 @@ export async function PUT(
 ) {
   const { id } = await params;
   try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user as { id?: string; role?: string } | undefined;
+    if (!user?.id || user.role !== 'PARTNER') {
+      return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });
+    }
     const body = await request.json();
     const { status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes } = body;
+    if (status && !['ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(status)) {
+      return NextResponse.json({ error: 'Use Confirm Availability on your dashboard to confirm an appointment.' }, { status: 400 });
+    }
 
     if (isDbConfigured) {
       const updateRes = await executeQuery(
@@ -58,9 +68,9 @@ export async function PUT(
              vital_spo2 = COALESCE($4, vital_spo2),
              vital_sugar = COALESCE($5, vital_sugar),
              prescription_notes = COALESCE($6, prescription_notes)
-         WHERE id = $7
+         WHERE id = $7 AND partner_id = $8
          RETURNING *`,
-        [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id]
+        [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id, user.id]
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
@@ -68,18 +78,7 @@ export async function PUT(
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      visit: {
-        id,
-        status,
-        vital_bp: vitalBp,
-        vital_pulse: vitalPulse,
-        vital_spo2: vitalSpo2,
-        vital_sugar: vitalSugar,
-        prescription_notes: prescriptionNotes,
-      },
-    });
+    return NextResponse.json({ error: 'Appointment could not be updated.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to update visit' }, { status: 500 });
   }

@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 
 export const maxDuration = 60;
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId') || 'usr_pat_001';
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  const userId = (session?.user as { id?: string } | undefined)?.id;
+  if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
 
   if (isDbConfigured) {
     const res = await executeQuery(
@@ -29,9 +34,12 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    const userId = (session?.user as { id?: string } | undefined)?.id;
+    if (!userId) return NextResponse.json({ error: 'Please sign in to book an appointment.' }, { status: 401 });
+    if (!isDbConfigured) return NextResponse.json({ error: 'Booking storage is unavailable.' }, { status: 503 });
     const body = await request.json();
     const {
-      userId = 'usr_pat_001',
       patientProfileId = 'prof_001',
       patientName = 'Sanju K.',
       addressId = 'addr_001',
@@ -47,6 +55,18 @@ export async function POST(request: Request) {
       partnerTitle,
       partnerImg,
     } = body;
+
+    let normalizedDate: string;
+    let startsAt: string;
+    try {
+      const reference = new Date();
+      normalizedDate = appointmentDate(scheduledDate, reference);
+      startsAt = appointmentStart(normalizedDate, scheduledTimeSlot, reference);
+      if (Date.parse(startsAt) <= reference.getTime()) throw new Error('Please choose a future appointment time.');
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid appointment date or time.' }, { status: 400 });
+    }
+    await ensureAppointmentSchema();
 
     const bookingId = `bk_${Date.now()}`;
     const bookingNumber = `HD-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -68,9 +88,9 @@ export async function POST(request: Request) {
           id, booking_number, user_id, patient_profile_id, patient_name, address_id, address_text,
           service_id, service_title, partner_id, partner_name, partner_title, partner_img,
           scheduled_date, scheduled_time_slot, status, total_amount, payment_status, payment_method, payment_ref, clinical_instructions,
-          patient_lat, patient_lng
+          patient_lat, patient_lng, appointment_starts_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
         RETURNING *`,
         [
           bookingId,
@@ -86,9 +106,9 @@ export async function POST(request: Request) {
           partnerName || null,
           partnerTitle || null,
           partnerImg || null,
-          scheduledDate,
+          normalizedDate,
           scheduledTimeSlot,
-          'CONFIRMED',
+          'PENDING',
           totalAmount,
           'PAID',
           'UPI',
@@ -96,8 +116,13 @@ export async function POST(request: Request) {
           clinicalInstructions,
           pLat,
           pLng,
+          startsAt,
         ]
       );
+
+      if (!insertRes.isConnected || !insertRes.rows.length) {
+        return NextResponse.json({ error: 'Could not save your appointment. Please try again.' }, { status: 503 });
+      }
 
       // Also create invoice
       const subtotal = (totalAmount / 1.18).toFixed(2);
@@ -120,24 +145,13 @@ export async function POST(request: Request) {
         }
       }
 
-      if (!targetDoctorEmail) {
-        // Fallback to first available doctor in system if no specific partner assigned
-        const defaultDocRes = await executeQuery(
-          `SELECT u.email, u.name FROM users u JOIN partner_profiles p ON u.id = p.user_id WHERE u.role = 'PARTNER' LIMIT 1`
-        );
-        if (defaultDocRes.isConnected && defaultDocRes.rows.length > 0) {
-          targetDoctorEmail = defaultDocRes.rows[0].email;
-          targetDoctorName = defaultDocRes.rows[0].name;
-        }
-      }
-
       if (targetDoctorEmail) {
         await sendDoctorAppointmentEmail({
           doctorEmail: targetDoctorEmail,
           doctorName: targetDoctorName,
           patientName,
           serviceTitle,
-          scheduledDate,
+          scheduledDate: normalizedDate,
           scheduledTimeSlot,
           addressText: addressText || '123 Green Park, Bengaluru',
           bookingNumber,
@@ -150,23 +164,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const createdBooking = {
-      id: bookingId,
-      booking_number: bookingNumber,
-      user_id: userId,
-      patient_name: patientName,
-      service_title: serviceTitle,
-      partner_name: partnerName,
-      partner_img: partnerImg,
-      scheduled_date: scheduledDate,
-      scheduled_time_slot: scheduledTimeSlot,
-      status: 'CONFIRMED',
-      total_amount: totalAmount,
-      payment_status: 'PAID',
-      payment_ref: paymentRef,
-    };
-
-    return NextResponse.json({ success: true, booking: createdBooking });
+    return NextResponse.json({ error: 'Could not save your appointment.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to create booking' }, { status: 500 });
   }

@@ -40,6 +40,9 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const { status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes } = body;
+    if (status === 'CONFIRMED') {
+      return NextResponse.json({ error: 'Only the assigned doctor can confirm availability.' }, { status: 403 });
+    }
 
     if (isDbConfigured) {
       const updateRes = await executeQuery(
