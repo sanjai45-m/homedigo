@@ -1,5 +1,7 @@
 'use client';
 
+import { HOMEDIGO_REVENUE_PERCENT } from '@/lib/revenue';
+
 import React, { useState, useEffect } from 'react';
 import {
   DollarSign,
@@ -45,7 +47,7 @@ export default function AdminServicesPage() {
     description: '',
     basePrice: 500,
     visitingFee: 50,
-    commissionPercentage: 15,
+    commissionPercentage: HOMEDIGO_REVENUE_PERCENT,
     durationMinutes: 45,
     icon: 'Stethoscope',
   });
@@ -82,7 +84,7 @@ export default function AdminServicesPage() {
           description: editingService.description,
           basePrice: editingService.base_price,
           visitingFee: editingService.visiting_fee,
-          commissionPercentage: editingService.commission_percentage,
+          commissionPercentage: HOMEDIGO_REVENUE_PERCENT,
           durationMinutes: editingService.duration_minutes,
           isActive: editingService.is_active,
         }),
@@ -121,7 +123,7 @@ export default function AdminServicesPage() {
           description: '',
           basePrice: 500,
           visitingFee: 50,
-          commissionPercentage: 15,
+          commissionPercentage: HOMEDIGO_REVENUE_PERCENT,
           durationMinutes: 45,
           icon: 'Stethoscope',
         });
@@ -164,7 +166,7 @@ export default function AdminServicesPage() {
             Dynamic Services & Amount Fixing
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Configure doorstep clinical rates, visiting convenience fees, and commission rates in real-time with instant DB synchronization.
+            Configure clinical rates and visiting fees. Homedigo receives a fixed 10% of each appointment amount.
           </p>
         </div>
 
@@ -277,7 +279,7 @@ export default function AdminServicesPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Platform Commission:</span>
-                  <span className="text-purple-700 font-bold">{srv.commission_percentage || 15}%</span>
+                  <span className="text-purple-700 font-bold">{HOMEDIGO_REVENUE_PERCENT}%</span>
                 </div>
 
                 <div className="mt-3 pt-3 bg-slate-50 p-3 rounded-2xl flex items-center justify-between text-xs">
@@ -340,11 +342,11 @@ export default function AdminServicesPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Commission (%)</label>
+                  <label className="block text-slate-700 font-bold mb-1">Homedigo Share (fixed %)</label>
                   <input
                     type="number"
-                    value={editingService.commission_percentage}
-                    onChange={(e) => setEditingService({ ...editingService, commission_percentage: Number(e.target.value) })}
+                    value={HOMEDIGO_REVENUE_PERCENT}
+                    readOnly
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -479,11 +481,11 @@ export default function AdminServicesPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-700 font-bold mb-1">Commission (%)</label>
+                  <label className="block text-slate-700 font-bold mb-1">Homedigo Share (fixed %)</label>
                   <input
                     type="number"
-                    value={newForm.commissionPercentage}
-                    onChange={(e) => setNewForm({ ...newForm, commissionPercentage: Number(e.target.value) })}
+                    value={HOMEDIGO_REVENUE_PERCENT}
+                    readOnly
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-amber-500"
                   />
                 </div>

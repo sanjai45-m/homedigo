@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { calculateDistanceKm, estimateTravelMinutes, reverseGeocode } from '@/lib/geo';
 import LocationPicker from '@/components/shared/LocationPicker';
+import BookingGate from '@/components/auth/BookingGate';
 
 export default function BookServicePage() {
   return (
@@ -45,7 +46,7 @@ export default function BookServicePage() {
         <span>Loading Booking Wizard...</span>
       </div>
     }>
-      <BookServiceContent />
+      <BookingGate><BookServiceContent /></BookingGate>
     </Suspense>
   );
 }
@@ -158,8 +159,9 @@ function BookServiceContent() {
           const matched = availablePartners.find((p: any) => p.id === initialDoctorId);
           if (matched) {
             setSelectedPartnerId(matched.id);
-          } else if (availablePartners.length > 0) {
-            setSelectedPartnerId(availablePartners[0].id);
+          } else {
+            // Keep the requested doctor; never silently book a different person.
+            setSelectedPartnerId(initialDoctorId);
           }
         } else if (availablePartners.length > 0) {
           setSelectedPartnerId(availablePartners[0].id);
@@ -284,7 +286,7 @@ function BookServiceContent() {
   };
 
   const selectedService = services.find((s) => s.id === selectedServiceId) || services[0] || null;
-  const matchedPartner = partners.find((p) => p.id === selectedPartnerId) || partners[0] || null;
+  const matchedPartner = partners.find((p) => p.id === selectedPartnerId) || null;
   const selectedProfile = profiles.find((p) => p.id === selectedProfileId) || profiles[0] || null;
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId) || addresses[0] || null;
 
@@ -301,6 +303,10 @@ function BookServiceContent() {
   const handleFinalCheckout = async () => {
     if (!selectedService) {
       alert('Please select a healthcare service first.');
+      return;
+    }
+    if (selectedService.id === 'srv_doc' && !matchedPartner) {
+      alert('Please choose an available doctor before confirming your appointment.');
       return;
     }
     if (!selectedProfile) {
@@ -379,6 +385,12 @@ function BookServiceContent() {
           Fast 5-step clinical booking backed by dynamic pricing & verified on-duty doctors.
         </p>
       </div>
+
+      {!isInitialLoading && initialDoctorId && !matchedPartner && (
+        <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          Your selected doctor is no longer listed. Please choose another doctor in the clinician step before confirming your visit.
+        </div>
+      )}
 
       {/* Preselected Doctor Banner (if matched) */}
       {matchedPartner && (

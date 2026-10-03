@@ -1,3 +1,4 @@
+import { HOMEDIGO_REVENUE_PERCENT } from '@/lib/revenue';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
@@ -5,9 +6,9 @@ export async function GET() {
   if (isDbConfigured) {
     const res = await executeQuery(
       `SELECT id, title, category, description, base_price, duration_minutes, icon, is_active, 
-              COALESCE(visiting_fee, 0) as visiting_fee, COALESCE(commission_percentage, 15) as commission_percentage
+              COALESCE(visiting_fee, 0) as visiting_fee, $1::numeric as commission_percentage
        FROM services 
-       ORDER BY title ASC`
+       ORDER BY title ASC`, [HOMEDIGO_REVENUE_PERCENT]
     );
     if (res.isConnected && res.rows.length > 0) {
       return NextResponse.json({ services: res.rows });
@@ -23,7 +24,7 @@ export async function GET() {
       description: 'General physician doorstep clinical checkup and consultation',
       base_price: 500,
       visiting_fee: 50,
-      commission_percentage: 15,
+      commission_percentage: HOMEDIGO_REVENUE_PERCENT,
       duration_minutes: 45,
       icon: 'Stethoscope',
       is_active: true,
@@ -35,7 +36,7 @@ export async function GET() {
       description: 'IV infusion, injections, catheter care, and vital monitoring',
       base_price: 350,
       visiting_fee: 40,
-      commission_percentage: 15,
+      commission_percentage: HOMEDIGO_REVENUE_PERCENT,
       duration_minutes: 60,
       icon: 'HeartHandshake',
       is_active: true,
@@ -47,7 +48,7 @@ export async function GET() {
       description: 'Sterile dressing for diabetic foot ulcers, burns and post-surgical wounds',
       base_price: 300,
       visiting_fee: 30,
-      commission_percentage: 12,
+      commission_percentage: HOMEDIGO_REVENUE_PERCENT,
       duration_minutes: 30,
       icon: 'Bandage',
       is_active: true,
@@ -59,7 +60,7 @@ export async function GET() {
       description: 'Neuro, orthopedic, and post-surgery mobility rehabilitation',
       base_price: 600,
       visiting_fee: 60,
-      commission_percentage: 18,
+      commission_percentage: HOMEDIGO_REVENUE_PERCENT,
       duration_minutes: 50,
       icon: 'Activity',
       is_active: true,
@@ -71,7 +72,7 @@ export async function GET() {
       description: 'NABL certified doorstep diagnostic blood sample collection',
       base_price: 199,
       visiting_fee: 25,
-      commission_percentage: 10,
+      commission_percentage: HOMEDIGO_REVENUE_PERCENT,
       duration_minutes: 15,
       icon: 'TestTube',
       is_active: true,
@@ -90,7 +91,6 @@ export async function POST(request: Request) {
       description = '',
       basePrice = 500,
       visitingFee = 50,
-      commissionPercentage = 15,
       durationMinutes = 45,
       icon = 'Stethoscope',
       isActive = true,
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       await executeQuery(`
         ALTER TABLE services 
         ADD COLUMN IF NOT EXISTS visiting_fee NUMERIC(10, 2) DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS commission_percentage NUMERIC(5, 2) DEFAULT 15;
+        ADD COLUMN IF NOT EXISTS commission_percentage NUMERIC(5, 2) DEFAULT ${HOMEDIGO_REVENUE_PERCENT};
       `);
 
       const insertRes = await executeQuery(
@@ -121,7 +121,7 @@ export async function POST(request: Request) {
           description,
           Number(basePrice),
           Number(visitingFee),
-          Number(commissionPercentage),
+          HOMEDIGO_REVENUE_PERCENT,
           Number(durationMinutes),
           icon,
           isActive,
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
       description,
       base_price: Number(basePrice),
       visiting_fee: Number(visitingFee),
-      commission_percentage: Number(commissionPercentage),
+      commission_percentage: HOMEDIGO_REVENUE_PERCENT,
       duration_minutes: Number(durationMinutes),
       icon,
       is_active: isActive,
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, title, category, description, basePrice, visitingFee, commissionPercentage, durationMinutes, isActive } = body;
+    const { id, title, category, description, basePrice, visitingFee, durationMinutes, isActive } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'Service ID is required' }, { status: 400 });
@@ -165,7 +165,7 @@ export async function PUT(request: Request) {
       await executeQuery(`
         ALTER TABLE services 
         ADD COLUMN IF NOT EXISTS visiting_fee NUMERIC(10, 2) DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS commission_percentage NUMERIC(5, 2) DEFAULT 15;
+        ADD COLUMN IF NOT EXISTS commission_percentage NUMERIC(5, 2) DEFAULT ${HOMEDIGO_REVENUE_PERCENT};
       `);
 
       const updateRes = await executeQuery(
@@ -186,7 +186,7 @@ export async function PUT(request: Request) {
           description,
           basePrice ? Number(basePrice) : null,
           visitingFee !== undefined ? Number(visitingFee) : null,
-          commissionPercentage !== undefined ? Number(commissionPercentage) : null,
+          HOMEDIGO_REVENUE_PERCENT,
           durationMinutes ? Number(durationMinutes) : null,
           isActive !== undefined ? isActive : null,
           id,

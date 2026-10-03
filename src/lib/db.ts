@@ -181,7 +181,7 @@ export async function initializeDatabase() {
         description TEXT,
         base_price NUMERIC(10, 2) NOT NULL,
         visiting_fee NUMERIC(10, 2) DEFAULT 100.00,
-        commission_percentage NUMERIC(5, 2) DEFAULT 15.00,
+        commission_percentage NUMERIC(5, 2) DEFAULT 10.00,
         duration_minutes INT DEFAULT 45,
         icon VARCHAR(64),
         is_active BOOLEAN DEFAULT TRUE

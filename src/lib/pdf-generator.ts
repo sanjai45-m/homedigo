@@ -1,3 +1,5 @@
+import { HOMEDIGO_REVENUE_PERCENT, CLINICIAN_REVENUE_PERCENT } from '@/lib/revenue';
+
 /**
  * Homedigo Official PDF Generator Utility
  * Generates printable GST Tax Invoices and Official Tax Ledgers with HomeDigo branding.
@@ -11,6 +13,12 @@ export interface TaxLedgerData {
   weeklyEarnings: number;
   monthlyEarnings: number;
   pendingPayout: number;
+  revenueSummary?: {
+    grossRevenue: number;
+    platformCommission: number;
+    netClinicianPayouts: number;
+    totalTransactions: number;
+  };
   payouts: Array<{
     id: string;
     date: string;
@@ -181,27 +189,27 @@ export function generateTaxLedgerPdf(data: TaxLedgerData) {
           <div class="meta-box">
             <div><strong>Clinician:</strong> ${data.partnerName} (${data.partnerRole})</div>
             <div><strong>Settlement Account:</strong> ${data.bankAccount}</div>
-            <div><strong>Statement Period:</strong> Oct 01 - Oct 31, 2026</div>
+            <div><strong>Statement Period:</strong> ${data.revenueSummary ? 'All recorded appointments; latest 20 invoices itemized below' : 'Oct 01 - Oct 31, 2026'}</div>
             <div><strong>Generated On:</strong> ${new Date().toLocaleDateString('en-IN')}</div>
           </div>
         </div>
 
         <div class="kpi-grid">
           <div class="kpi-card">
-            <div class="kpi-label">Today's Take-Home</div>
-            <div class="kpi-val">₹${data.todayEarnings.toLocaleString('en-IN')}</div>
+            <div class="kpi-label">${data.revenueSummary ? 'Total Appointment Amount' : "Today's Take-Home"}</div>
+            <div class="kpi-val">₹${(data.revenueSummary?.grossRevenue ?? data.todayEarnings).toFixed(2)}</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label">Weekly Take-Home</div>
-            <div class="kpi-val">₹${data.weeklyEarnings.toLocaleString('en-IN')}</div>
+            <div class="kpi-label">${data.revenueSummary ? `Homedigo Revenue (${HOMEDIGO_REVENUE_PERCENT}%)` : 'Weekly Take-Home'}</div>
+            <div class="kpi-val">₹${(data.revenueSummary?.platformCommission ?? data.weeklyEarnings).toFixed(2)}</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label">Monthly Take-Home</div>
-            <div class="kpi-val">₹${data.monthlyEarnings.toLocaleString('en-IN')}</div>
+            <div class="kpi-label">${data.revenueSummary ? `Clinician Share (${CLINICIAN_REVENUE_PERCENT}%)` : 'Monthly Take-Home'}</div>
+            <div class="kpi-val">₹${(data.revenueSummary?.netClinicianPayouts ?? data.monthlyEarnings).toFixed(2)}</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-label">Pending Disbursal</div>
-            <div class="kpi-val" style="color: #d97706;">₹${data.pendingPayout.toLocaleString('en-IN')}</div>
+            <div class="kpi-label">${data.revenueSummary ? 'Total Appointments' : 'Pending Disbursal'}</div>
+            <div class="kpi-val" style="color: #d97706;">${data.revenueSummary ? data.revenueSummary.totalTransactions : `₹${data.pendingPayout.toFixed(2)}`}</div>
           </div>
         </div>
 
@@ -213,8 +221,8 @@ export function generateTaxLedgerPdf(data: TaxLedgerData) {
               <th>Booking Ref</th>
               <th>Service & Patient</th>
               <th class="text-right">Gross Fee</th>
-              <th class="text-right">Platform Fee (15%)</th>
-              <th class="text-right">Net Settlement</th>
+              <th class="text-right">Platform Fee (${HOMEDIGO_REVENUE_PERCENT}%)</th>
+              <th class="text-right">Clinician Share (${CLINICIAN_REVENUE_PERCENT}%)</th>
               <th>Banking UTR Ref</th>
             </tr>
           </thead>
@@ -241,7 +249,7 @@ export function generateTaxLedgerPdf(data: TaxLedgerData) {
           <div>
             <div style="font-size: 11px; color: #0f766e; font-weight: bold; text-transform: uppercase;">Direct Settlement Summary</div>
             <div style="font-size: 18px; font-weight: 900; color: #0f172a; margin-top: 2px;">
-              Total Disbursed: ₹${totalNet.toFixed(2)}
+              ${data.revenueSummary ? 'Clinician Share (listed invoices)' : 'Total Disbursed'}: ₹${totalNet.toFixed(2)}
             </div>
           </div>
           <div style="text-align: right; font-size: 12px; color: #334155;">

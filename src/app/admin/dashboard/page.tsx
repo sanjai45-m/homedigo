@@ -182,7 +182,7 @@ export default function AdminDashboardPage() {
             </div>
             <h3 className="text-lg font-bold text-slate-900 font-heading">Dynamic Pricing & Catalog</h3>
             <p className="text-xs text-slate-500 leading-relaxed mt-1">
-              No hardcoded values. Configure doctor visit rates, visiting fees, and platform commission percentages dynamically with instant DB synchronization.
+              Configure doctor visit rates and visiting fees. Homedigo receives a fixed 10% of each appointment amount.
             </p>
           </div>
           <Link

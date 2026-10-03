@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { RevenueSplit } from '@/components/RevenueSplit';
+import { HOMEDIGO_REVENUE_PERCENT } from '@/lib/revenue';
 import {
   Sparkles,
   TrendingUp,
@@ -74,7 +76,7 @@ export default function SuperAdminDashboardPage() {
             Super Admin Executive Cockpit
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Centralized platform oversight: Operations admin governance, doctor onboarding, billing settlements & 15% platform commission ledger.
+            Centralized platform oversight: Operations admin governance, doctor onboarding, billing settlements & {HOMEDIGO_REVENUE_PERCENT}% Homedigo revenue ledger.
           </p>
         </div>
 
@@ -101,7 +103,7 @@ export default function SuperAdminDashboardPage() {
         {/* Total GMV */}
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Gross Platform GMV</span>
+            <span>Total Appointment Amount</span>
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
               <DollarSign className="w-4 h-4" />
             </div>
@@ -115,10 +117,10 @@ export default function SuperAdminDashboardPage() {
           </div>
         </div>
 
-        {/* 15% Platform Take-rate */}
+        {/* Homedigo application revenue */}
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Platform Commission (15%)</span>
+            <span>Homedigo Revenue ({HOMEDIGO_REVENUE_PERCENT}%)</span>
             <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
               <Sparkles className="w-4 h-4" />
             </div>
@@ -165,6 +167,8 @@ export default function SuperAdminDashboardPage() {
       </div>
 
       {/* 3 Executive Control Banners */}
+      <RevenueSplit total={billingSummary.grossRevenue} homedigo={billingSummary.platformCommission} clinician={billingSummary.netClinicianPayouts} />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Card 1: Admin Governance */}
         <div className="p-6 rounded-3xl bg-gradient-to-br from-indigo-50/70 via-white to-white border border-indigo-200/80 shadow-xs flex flex-col justify-between space-y-4 hover:shadow-md transition-all">
@@ -194,7 +198,7 @@ export default function SuperAdminDashboardPage() {
             </div>
             <h3 className="text-lg font-bold text-slate-900 font-heading">Global Partner Governance</h3>
             <p className="text-xs text-slate-500 leading-relaxed mt-1">
-              Directly onboard doctors, nurses, and physios. Inspect medical council registrations and override regional commission splits.
+              Directly onboard doctors, nurses, and physios. Inspect medical council registrations and review the fixed 10% Homedigo revenue split.
             </p>
           </div>
           <Link

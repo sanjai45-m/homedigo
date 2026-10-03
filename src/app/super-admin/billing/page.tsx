@@ -18,6 +18,21 @@ import {
   Loader2
 } from 'lucide-react';
 import { generateTaxLedgerPdf } from '@/lib/pdf-generator';
+import { RevenueSplit } from '@/components/RevenueSplit';
+import { formatRevenue, HOMEDIGO_REVENUE_PERCENT, CLINICIAN_REVENUE_PERCENT } from '@/lib/revenue';
+
+interface AppointmentRevenue {
+  id: string;
+  booking_number: string;
+  service_title: string;
+  patient_name: string;
+  partner_name: string | null;
+  payment_status: string;
+  status: string;
+  grossAmount: number;
+  commission: number;
+  netPayout: number;
+}
 
 export default function SuperAdminBillingPage() {
   const [summary, setSummary] = useState({
@@ -29,6 +44,7 @@ export default function SuperAdminBillingPage() {
     totalTransactions: 0,
   });
   const [invoices, setInvoices] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<AppointmentRevenue[]>([]);
   const [loading, setLoading] = useState(true);
   const [disbursing, setDisbursing] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -40,6 +56,7 @@ export default function SuperAdminBillingPage() {
       const data = await res.json();
       if (data.summary) setSummary(data.summary);
       if (data.invoices) setInvoices(data.invoices);
+      if (data.appointments) setAppointments(data.appointments);
     } catch (e) {
       console.error(e);
     } finally {
@@ -85,7 +102,7 @@ export default function SuperAdminBillingPage() {
             Platform Billing & Revenue Settlements
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Centralized financial engine: 15% platform commission splits, GST tax auditing, and weekly partner batch disbursements.
+            Every appointment is split into {HOMEDIGO_REVENUE_PERCENT}% Homedigo revenue and {CLINICIAN_REVENUE_PERCENT}% clinician share.
           </p>
         </div>
 
@@ -125,46 +142,46 @@ export default function SuperAdminBillingPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Gross Platform GMV</span>
+            <span>Total Appointment Amount</span>
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-            ₹{summary.grossRevenue.toLocaleString('en-IN')}
+            ₹{formatRevenue(summary.grossRevenue)}
           </div>
           <div className="text-xs text-emerald-600 mt-1 font-semibold">
-            {summary.successfulPayments} Paid Appointments
+            {summary.totalTransactions} Appointments · {summary.successfulPayments} Paid
           </div>
         </div>
 
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>HomeDigo Revenue (15%)</span>
+            <span>Homedigo Revenue ({HOMEDIGO_REVENUE_PERCENT}%)</span>
             <div className="p-2 rounded-xl bg-purple-50 text-purple-600">
               <Sparkles className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-purple-700 font-heading mt-3">
-            ₹{summary.platformCommission.toLocaleString('en-IN')}
+            ₹{formatRevenue(summary.platformCommission)}
           </div>
           <div className="text-xs text-purple-600 mt-1 font-semibold">
-            Net Platform Take-Rate
+            Application share of each appointment
           </div>
         </div>
 
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Clinician Net Payouts (85%)</span>
+            <span>Clinician Share ({CLINICIAN_REVENUE_PERCENT}%)</span>
             <div className="p-2 rounded-xl bg-teal-50 text-teal-600">
               <CreditCard className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-teal-700 font-heading mt-3">
-            ₹{summary.netClinicianPayouts.toLocaleString('en-IN')}
+            ₹{formatRevenue(summary.netClinicianPayouts)}
           </div>
           <div className="text-xs text-teal-600 mt-1 font-semibold">
-            Direct Bank Settlement Pool
+            Remaining after Homedigo&apos;s share
           </div>
         </div>
 
@@ -183,6 +200,33 @@ export default function SuperAdminBillingPage() {
           </div>
         </div>
       </div>
+
+      <RevenueSplit total={summary.grossRevenue} homedigo={summary.platformCommission} clinician={summary.netClinicianPayouts} />
+
+      <section className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-4">
+        <h2 className="text-lg font-bold text-slate-900">Recent Appointment Revenue Splits</h2>
+        <p className="text-xs text-slate-500">Latest 20 appointments. Summary totals above include all appointments.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead><tr className="border-b border-slate-100 text-slate-500">
+              <th className="pb-3 pr-4">Appointment</th><th className="pb-3 pr-4">Patient / Clinician</th><th className="pb-3 pr-4">Status / Payment</th>
+              <th className="pb-3 text-right">Total Amount</th><th className="pb-3 text-right">Homedigo ({HOMEDIGO_REVENUE_PERCENT}%)</th><th className="pb-3 text-right">Clinician ({CLINICIAN_REVENUE_PERCENT}%)</th>
+            </tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? <tr><td colSpan={6} className="py-8 text-center text-slate-500">Loading appointment splits...</td></tr> : appointments.length ? appointments.map((appointment) => (
+                <tr key={appointment.id}>
+                  <td className="py-3 pr-4"><div className="font-bold">{appointment.booking_number || appointment.id}</div><div className="text-slate-500">{appointment.service_title}</div></td>
+                  <td className="py-3 pr-4"><div>{appointment.patient_name}</div><div className="text-slate-500">{appointment.partner_name || 'Not assigned'}</div></td>
+                  <td className="py-3 pr-4"><div>{appointment.status}</div><div className="text-slate-500">{appointment.payment_status || 'PENDING'}</div></td>
+                  <td className="py-3 text-right font-bold">₹{formatRevenue(appointment.grossAmount)}</td>
+                  <td className="py-3 text-right font-bold text-purple-700">₹{formatRevenue(appointment.commission)}</td>
+                  <td className="py-3 text-right font-bold text-teal-700">₹{formatRevenue(appointment.netPayout)}</td>
+                </tr>
+              )) : <tr><td colSpan={6} className="py-8 text-center text-slate-500">No appointments recorded yet.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {/* Direct Settlement Gateway Status */}
       <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -207,19 +251,20 @@ export default function SuperAdminBillingPage() {
               partnerName: 'Platform Super Admin Audit',
               partnerRole: 'System Billing Administrator',
               bankAccount: 'Razorpay / Cashfree Disbursal Escrow',
-              todayEarnings: summary.grossRevenue,
-              weeklyEarnings: summary.grossRevenue * 4,
-              monthlyEarnings: summary.grossRevenue * 12,
-              pendingPayout: summary.netClinicianPayouts,
+              revenueSummary: summary,
+              todayEarnings: 0,
+              weeklyEarnings: 0,
+              monthlyEarnings: 0,
+              pendingPayout: 0,
               payouts: invoices.map((inv, idx) => ({
                 id: inv.id || `tx_${idx}`,
                 date: new Date(inv.created_at || Date.now()).toLocaleDateString('en-IN'),
                 bookingId: inv.invoice_number || `HD-${1000 + idx}`,
                 service: inv.service_title || 'Healthcare Visit',
                 patient: inv.patient_name || 'Patient User',
-                grossAmount: Number(inv.total_paid) || 550,
-                commission: Number(inv.total_paid || 550) * 0.15,
-                netPayout: Number(inv.total_paid || 550) * 0.85,
+                grossAmount: inv.grossAmount,
+                commission: inv.commission,
+                netPayout: inv.netPayout,
                 status: 'SETTLED',
                 utr: inv.payment_ref || `UTR${Date.now()}`,
               })),
@@ -249,7 +294,8 @@ export default function SuperAdminBillingPage() {
                 <th className="pb-3 text-right">Subtotal</th>
                 <th className="pb-3 text-right">GST (18%)</th>
                 <th className="pb-3 text-right">Total Paid</th>
-                <th className="pb-3 text-right">Platform Cut (15%)</th>
+                <th className="pb-3 text-right">Homedigo ({HOMEDIGO_REVENUE_PERCENT}%)</th>
+                <th className="pb-3 text-right">Clinician ({CLINICIAN_REVENUE_PERCENT}%)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -263,13 +309,14 @@ export default function SuperAdminBillingPage() {
                     <td className="py-3 text-right text-amber-600">₹{inv.tax_amount}</td>
                     <td className="py-3 text-right font-black text-slate-900">₹{inv.total_paid}</td>
                     <td className="py-3 text-right font-bold text-purple-700">
-                      ₹{(Number(inv.total_paid) * 0.15).toFixed(2)}
+                      ₹{formatRevenue(inv.commission)}
                     </td>
+                    <td className="py-3 text-right font-bold text-teal-700">₹{formatRevenue(inv.netPayout)}</td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     No recent invoices recorded in database yet.
                   </td>
                 </tr>

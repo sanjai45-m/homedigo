@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { splitAppointmentAmount } from '@/lib/revenue';
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -48,16 +49,14 @@ export async function GET() {
       const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
       const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      let todayGross = 0;
+      let todayNet = 0;
       let totalGrossAllTime = 0;
       let totalCommissionAllTime = 0;
       let totalNetAllTime = 0;
       let pendingPayoutNet = 0;
 
       const payouts = visits.map((v: any) => {
-        const gross = Number(v.total_amount) || 550;
-        const commission = Number((gross * 0.15).toFixed(2));
-        const netPayout = Number((gross * 0.85).toFixed(2));
+        const { grossAmount: gross, commission, netPayout } = splitAppointmentAmount(v.total_amount);
 
         const createdDate = new Date(v.created_at || Date.now());
         const createdStr = createdDate.toISOString().split('T')[0];
@@ -67,7 +66,7 @@ export async function GET() {
         totalNetAllTime += netPayout;
 
         if (createdStr === todayStr) {
-          todayGross += gross;
+          todayNet += netPayout;
         }
 
         if (v.status !== 'COMPLETED' && v.status !== 'CANCELLED') {
@@ -94,7 +93,7 @@ export async function GET() {
         };
       });
 
-      const todayNetTakeHome = Number((todayGross * 0.85).toFixed(2));
+      const todayNetTakeHome = Number(todayNet.toFixed(2));
 
       return NextResponse.json({
         partnerName: partner.name,

@@ -1,0 +1,13 @@
+HomeDigo landing image provenance
+
+Generated with the built-in image_gen tool. AI-generated illustrative healthcare imagery; these images do not depict actual HomeDigo clinicians or patients.
+
+Final asset: public/images/home-care-hero.webp
+Prompt:
+Use case: photorealistic-natural. Asset type: HomeDigo home healthcare website hero photograph, landscape 3:2. Create a premium editorial photograph of a warm, trustworthy Indian female doctor in her early 30s wearing a cream-white medical coat over muted teal scrubs, with a stethoscope, seated on the left, chatting kindly with an elderly Indian woman in a light sage-green sari seated on the right on a cream linen sofa in a beautiful naturally lit contemporary Bengaluru home. The doctor gently holds the patient's hand while listening. Both faces fully visible, natural smiles, candid eye contact with each other, no looking at camera. Medium-wide shot, subjects framed waist-up in the central 75 percent, room visible: warm ivory plaster walls, sheer curtains, soft daylight from right, subtle green houseplant and oak furniture. Warm refined editorial color grading, film-like natural texture, realistic hands and anatomy, professional healthcare campaign photography. Mood: reassuring, personal, peaceful. No text, logos, watermark, graphics, borders, collages, or medical procedures. Save the generated image for use in the local website project.
+
+Final asset: public/images/home-physiotherapy.webp
+Prompt:
+Use case: photorealistic-natural. Asset type: HomeDigo home healthcare website supporting photograph, landscape 3:2. Premium candid editorial photography: an Indian male physiotherapist in his early 30s in muted teal scrubs kneels next to an elderly Indian man with silver hair in a cream polo shirt, seated on a linen armchair at home. The therapist kindly demonstrates a simple seated arm stretch and the patient follows with a happy natural smile. Safe gentle mobility exercise, no equipment. Subjects fully in frame, mid-wide angle in a sophisticated lived-in Bengaluru home, pale warm walls, leafy green plants, natural oak furniture, sheer curtains and soft daylight. Reassuring authentic connection and dignified care, warm restrained film-like color grading, natural skin and fabric textures, anatomically correct hands and arms. No text, logos, watermarks, graphic elements, borders, collages. High-end healthcare lifestyle campaign photograph.
+
+Delivery: 1440 x 960 WebP, quality 86, optimized from the generated PNG originals using sharp.

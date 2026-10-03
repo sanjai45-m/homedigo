@@ -1,5 +1,7 @@
 'use client';
 
+import { HOMEDIGO_REVENUE_PERCENT, CLINICIAN_REVENUE_PERCENT } from '@/lib/revenue';
+
 import React, { useState, useEffect } from 'react';
 import {
   DollarSign,
@@ -86,7 +88,7 @@ export default function PartnerEarningsPage() {
             <span>Earnings & Payout Ledger</span>
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Real-time per-visit revenue splits, automatic 15% platform commission deductions, and instant bank transfers.
+            Real-time per-visit revenue splits, automatic {HOMEDIGO_REVENUE_PERCENT}% platform commission deductions, and instant bank transfers.
           </p>
         </div>
 
@@ -124,7 +126,7 @@ export default function PartnerEarningsPage() {
             <div className="text-3xl font-extrabold text-emerald-600 mt-3">
               ₹{earnings.todayEarnings.toLocaleString('en-IN')}
             </div>
-            <div className="text-[11px] text-slate-400 mt-1 font-medium">Net 85% after 15% platform fee</div>
+            <div className="text-[11px] text-slate-400 mt-1 font-medium">Net {CLINICIAN_REVENUE_PERCENT}% after {HOMEDIGO_REVENUE_PERCENT}% platform fee</div>
           </div>
 
           {/* Card 2: Gross Consultation Volume */}
@@ -143,10 +145,10 @@ export default function PartnerEarningsPage() {
             </div>
           </div>
 
-          {/* Card 3: Platform Fee Paid (15%) */}
+          {/* Card 3: Platform Fee Paid ({HOMEDIGO_REVENUE_PERCENT}%) */}
           <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
             <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              <span>Platform Fee (15%)</span>
+              <span>Platform Fee ({HOMEDIGO_REVENUE_PERCENT}%)</span>
               <div className="p-2 rounded-xl bg-rose-50 text-rose-600">
                 <PieChart className="w-4 h-4" />
               </div>
@@ -223,7 +225,7 @@ export default function PartnerEarningsPage() {
                   <th className="pb-3.5">Booking ID</th>
                   <th className="pb-3.5">Service & Patient</th>
                   <th className="pb-3.5 text-right">Gross Amount</th>
-                  <th className="pb-3.5 text-right">Platform Fee (15%)</th>
+                  <th className="pb-3.5 text-right">Platform Fee ({HOMEDIGO_REVENUE_PERCENT}%)</th>
                   <th className="pb-3.5 text-right">Net Payout</th>
                   <th className="pb-3.5 text-right">Status</th>
                 </tr>

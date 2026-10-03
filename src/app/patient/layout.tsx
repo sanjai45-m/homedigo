@@ -47,6 +47,9 @@ export default function PatientLayout({
     signOut({ callbackUrl: '/' });
   };
 
+  // Authentication has its own full-page layout, without patient portal chrome.
+  if (pathname === '/patient/login') return <>{children}</>;
+
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col lg:flex-row">
       {/* Mobile Top Header */}
