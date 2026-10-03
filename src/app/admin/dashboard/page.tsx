@@ -18,13 +18,13 @@ import {
 
 export default function AdminDashboardPage() {
   const [metrics, setMetrics] = useState({
-    totalBookings: 184,
-    activeDispatches: 3,
-    completedVisits: 178,
-    totalRevenue: 94500,
-    activePartners: 12,
-    totalPartners: 24,
-    totalServices: 7,
+    totalBookings: 0,
+    activeDispatches: 0,
+    completedVisits: 0,
+    totalRevenue: 0,
+    activePartners: 0,
+    totalPartners: 0,
+    totalServices: 0,
   });
   const [recentBookings, setRecentBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,12 +98,16 @@ export default function AdminDashboardPage() {
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-            ₹{metrics.totalRevenue.toLocaleString('en-IN')}
-          </div>
+          {loading ? (
+            <div className="h-8 w-28 bg-slate-100 animate-pulse rounded-lg mt-3" />
+          ) : (
+            <div className="text-2xl font-black text-slate-900 font-heading mt-3">
+              ₹{metrics.totalRevenue.toLocaleString('en-IN')}
+            </div>
+          )}
           <div className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1 font-semibold">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>+18.4% from last week</span>
+            <span>Live DB Telemetry</span>
           </div>
         </div>
 
@@ -114,12 +118,16 @@ export default function AdminDashboardPage() {
               <Radio className="w-4 h-4 animate-pulse" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-            {metrics.activeDispatches}
-          </div>
+          {loading ? (
+            <div className="h-8 w-16 bg-slate-100 animate-pulse rounded-lg mt-3" />
+          ) : (
+            <div className="text-2xl font-black text-slate-900 font-heading mt-3">
+              {metrics.activeDispatches}
+            </div>
+          )}
           <div className="text-xs text-teal-600 mt-1.5 flex items-center gap-1 font-semibold">
             <Clock className="w-3.5 h-3.5" />
-            <span>Average ETA: 14 mins</span>
+            <span>Real-Time Dispatch</span>
           </div>
         </div>
 
@@ -130,9 +138,13 @@ export default function AdminDashboardPage() {
               <UserCheck className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-            {metrics.activePartners} <span className="text-xs font-normal text-slate-400">/ {metrics.totalPartners}</span>
-          </div>
+          {loading ? (
+            <div className="h-8 w-24 bg-slate-100 animate-pulse rounded-lg mt-3" />
+          ) : (
+            <div className="text-2xl font-black text-slate-900 font-heading mt-3">
+              {metrics.activePartners} <span className="text-xs font-normal text-slate-400">/ {metrics.totalPartners}</span>
+            </div>
+          )}
           <div className="text-xs text-blue-600 mt-1.5 flex items-center gap-1 font-semibold">
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>100% KYC Verified</span>
@@ -146,12 +158,16 @@ export default function AdminDashboardPage() {
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-            {metrics.completedVisits}
-          </div>
+          {loading ? (
+            <div className="h-8 w-16 bg-slate-100 animate-pulse rounded-lg mt-3" />
+          ) : (
+            <div className="text-2xl font-black text-slate-900 font-heading mt-3">
+              {metrics.completedVisits}
+            </div>
+          )}
           <div className="text-xs text-purple-600 mt-1.5 flex items-center gap-1 font-semibold">
             <Shield className="w-3.5 h-3.5" />
-            <span>4.92 / 5.0 Quality Rating</span>
+            <span>Quality Rating Managed</span>
           </div>
         </div>
       </div>
