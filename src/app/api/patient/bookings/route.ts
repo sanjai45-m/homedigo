@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
 
+export const maxDuration = 60;
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId') || 'usr_pat_001';
@@ -130,7 +132,7 @@ export async function POST(request: Request) {
       }
 
       if (targetDoctorEmail) {
-        sendDoctorAppointmentEmail({
+        await sendDoctorAppointmentEmail({
           doctorEmail: targetDoctorEmail,
           doctorName: targetDoctorName,
           patientName,

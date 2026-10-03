@@ -1,18 +1,16 @@
 import { NextResponse } from 'next/server';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email } = body;
+    const email = typeof body?.email === 'string' ? body.email.trim() : '';
 
-    if (!email) {
-      return NextResponse.json({ error: 'Target email is required' }, { status: 400 });
+    if (!/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(email)) {
+      return NextResponse.json({ success: false, error: 'A single valid target email is required' }, { status: 400 });
     }
-
-    const hasSmtpConfig = Boolean(
-      process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
-    );
 
     const result = await sendDoctorAppointmentEmail({
       doctorEmail: email,
@@ -26,17 +24,21 @@ export async function POST(request: Request) {
       totalAmount: 550,
     });
 
+    if (!result.success) {
+      return NextResponse.json(result, {
+        status: result.code === 'SMTP_NOT_CONFIGURED' || result.code === 'SMTP_INVALID_CONFIG' ? 503 : 502,
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      hasSmtpConfig,
-      message: hasSmtpConfig
-        ? `Test notification dispatched via SMTP (${process.env.SMTP_HOST}) to ${email}!`
-        : `SMTP credentials not yet configured in environment variables. Email notification payload logged to server telemetry.`,
-      smtpHost: process.env.SMTP_HOST || 'Not configured',
-      smtpUser: process.env.SMTP_USER || 'Not configured',
+      message: `SMTP accepted the test email to ${email}. Check the inbox and spam folder.`,
       result,
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to dispatch test email' }, { status: 500 });
+  } catch (err: unknown) {
+    if (err instanceof SyntaxError) {
+      return NextResponse.json({ success: false, error: 'Invalid JSON request body' }, { status: 400 });
+    }
+    return NextResponse.json({ success: false, error: 'Failed to dispatch test email' }, { status: 500 });
   }
 }

@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
 
+export const maxDuration = 60;
+
 export async function GET() {
   if (isDbConfigured) {
     const res = await executeQuery(
@@ -47,7 +49,7 @@ export async function PUT(request: Request) {
         if (partnerId) {
           const docRes = await executeQuery(`SELECT email, name FROM users WHERE id = $1 LIMIT 1`, [partnerId]);
           if (docRes.isConnected && docRes.rows.length > 0 && docRes.rows[0].email) {
-            sendDoctorAppointmentEmail({
+            await sendDoctorAppointmentEmail({
               doctorEmail: docRes.rows[0].email,
               doctorName: docRes.rows[0].name || partnerName || 'Practitioner',
               patientName: booking.patient_name || 'Patient',
