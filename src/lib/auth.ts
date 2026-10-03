@@ -123,6 +123,23 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith('/')) return `${baseUrl}${url}`;
+      try {
+        const parsedUrl = new URL(url);
+        if (
+          parsedUrl.origin === baseUrl ||
+          parsedUrl.hostname.endsWith('netlify.app') ||
+          parsedUrl.hostname.endsWith('vercel.app') ||
+          parsedUrl.hostname.includes('homedigo')
+        ) {
+          return url;
+        }
+      } catch {
+        // Fallback if invalid URL
+      }
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as any).role || 'PATIENT';

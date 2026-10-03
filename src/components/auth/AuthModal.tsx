@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { 
   X, 
@@ -12,7 +13,8 @@ import {
   Sparkles, 
   CheckCircle2, 
   ArrowRight,
-  LogOut
+  LogOut,
+  AlertCircle
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -21,19 +23,28 @@ interface AuthModalProps {
   defaultRole?: 'PATIENT' | 'PARTNER' | 'ADMIN';
 }
 
-export default function AuthModal({ isOpen, onClose, defaultRole = 'PATIENT' }: AuthModalProps) {
+function AuthModalContent({ isOpen, onClose, defaultRole = 'PATIENT' }: AuthModalProps) {
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const [selectedRole, setSelectedRole] = useState<'PATIENT' | 'PARTNER' | 'ADMIN'>(defaultRole);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
+  const callbackUrl = searchParams?.get('callbackUrl') || '/';
+
   const handleGoogleSignIn = async () => {
     setLoading(true);
+    setErrorMessage(null);
     try {
-      await signIn('google', { callbackUrl: '/' });
-    } catch (err) {
+      const res = await signIn('google', { callbackUrl });
+      if (res?.error) {
+        setErrorMessage('Google Sign In was not successful. Ensure GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET are configured in environment variables.');
+      }
+    } catch (err: any) {
       console.error('Google Sign In Error:', err);
+      setErrorMessage(err?.message || 'Failed to initiate Google Sign In.');
     } finally {
       setLoading(false);
     }
@@ -41,6 +52,7 @@ export default function AuthModal({ isOpen, onClose, defaultRole = 'PATIENT' }: 
 
   const handleDemoRoleSignIn = async (role: 'PATIENT' | 'PARTNER' | 'ADMIN') => {
     setLoading(true);
+    setErrorMessage(null);
     try {
       await signIn('demo-role-login', {
         role,
@@ -133,6 +145,15 @@ export default function AuthModal({ isOpen, onClose, defaultRole = 'PATIENT' }: 
           ) : (
             /* Not logged in: Sign in options */
             <>
+              {errorMessage && (
+                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                  <div>
+                    <p>{errorMessage}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Google Sign In (Primary OAuth) */}
               <div>
                 <button
@@ -166,109 +187,19 @@ export default function AuthModal({ isOpen, onClose, defaultRole = 'PATIENT' }: 
                   Fast & secure 1-click authentication
                 </p>
               </div>
-
-              {/* Divider */}
-              <div className="relative flex items-center justify-center">
-                <div className="border-t border-slate-200 w-full"></div>
-                <span className="bg-white px-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                  Or Instant Demo Access
-                </span>
-              </div>
-
-              {/* Instant Role Access Buttons */}
-              <div className="space-y-2.5">
-                <p className="text-xs font-medium text-slate-600">
-                  Select a portal role to experience the workflow:
-                </p>
-                
-                {/* 1. Patient */}
-                <button
-                  onClick={() => handleDemoRoleSignIn('PATIENT')}
-                  disabled={loading}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border border-blue-100 hover:border-blue-400 bg-blue-50/40 hover:bg-blue-50 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-sm">
-                      <User className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                        Patient / Family
-                        <span className="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.2 rounded">Sanju K.</span>
-                      </div>
-                      <div className="text-xs text-slate-600">Book visits, UPI checkout, live tracking</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
-                </button>
-
-                {/* 2. Healthcare Partner */}
-                <button
-                  onClick={() => handleDemoRoleSignIn('PARTNER')}
-                  disabled={loading}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border border-teal-100 hover:border-teal-400 bg-teal-50/40 hover:bg-teal-50 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-teal-600 text-white flex items-center justify-center shadow-sm">
-                      <Stethoscope className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                        Healthcare Partner
-                        <span className="text-[10px] bg-teal-100 text-teal-700 font-bold px-1.5 py-0.2 rounded">Dr. Priya S.</span>
-                      </div>
-                      <div className="text-xs text-slate-600">Schedule, navigate, log vitals & earn</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" />
-                </button>
-
-                {/* 3. Administrator */}
-                <button
-                  onClick={() => handleDemoRoleSignIn('ADMIN')}
-                  disabled={loading}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border border-indigo-100 hover:border-indigo-400 bg-indigo-50/40 hover:bg-indigo-50 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-indigo-600 text-white flex items-center justify-center shadow-sm">
-                      <ShieldCheck className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                        Admin & Operations
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded">Operations</span>
-                      </div>
-                      <div className="text-xs text-slate-600">KYC verification, dispatch & services</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-0.5 transition-all" />
-                </button>
-
-                {/* 4. Super Administrator */}
-                <button
-                  onClick={() => handleDemoRoleSignIn('SUPER_ADMIN' as any)}
-                  disabled={loading}
-                  className="w-full flex items-center justify-between p-3 rounded-xl border border-purple-100 hover:border-purple-400 bg-purple-50/40 hover:bg-purple-50 text-left transition-all group"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center shadow-sm">
-                      <Sparkles className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-slate-800 text-sm flex items-center gap-1.5">
-                        Super Admin Panel
-                        <span className="text-[10px] bg-purple-100 text-purple-700 font-bold px-1.5 py-0.2 rounded">Executive</span>
-                      </div>
-                      <div className="text-xs text-slate-600">Create admins, billing settlements & partners</div>
-                    </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
-                </button>
-              </div>
             </>
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthModal(props: AuthModalProps) {
+  if (!props.isOpen) return null;
+  return (
+    <Suspense fallback={null}>
+      <AuthModalContent {...props} />
+    </Suspense>
   );
 }

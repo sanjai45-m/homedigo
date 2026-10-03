@@ -117,6 +117,7 @@ export default function PartnersManager({ portalRole }: Props) {
   // Edit Partner form state
   const [editForm, setEditForm] = useState({
     name: '',
+    email: '',
     phone: '',
     partnerType: 'DOCTOR' as 'DOCTOR' | 'NURSE' | 'PHYSIOTHERAPIST' | 'CAREGIVER',
     specialityId: '',
@@ -171,6 +172,7 @@ export default function PartnersManager({ portalRole }: Props) {
     setEditingPartner(partner);
     setEditForm({
       name: partner.name || '',
+      email: partner.email || '',
       phone: partner.phone || '',
       partnerType: partner.partner_type || 'DOCTOR',
       specialityId: partner.speciality_id || (specialities[0]?.id || ''),
@@ -204,6 +206,7 @@ export default function PartnersManager({ portalRole }: Props) {
         body: JSON.stringify({
           userId: editingPartner.id,
           name: editForm.name,
+          email: editForm.email,
           phone: editForm.phone,
           image: editForm.image,
           partnerType: editForm.partnerType,
@@ -635,18 +638,26 @@ export default function PartnersManager({ portalRole }: Props) {
                     </div>
                   </div>
 
-                  {/* Registration Number & Phone */}
-                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs flex items-center justify-between">
-                    <div>
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Council / Reg ID</div>
-                      <div className="text-xs font-mono font-bold text-slate-800">
-                        {partner.council_reg_number || 'REG-VERIFIED'}
+                  {/* Registration Number, Email & Phone */}
+                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Council / Reg ID</div>
+                        <div className="text-xs font-mono font-bold text-slate-800">
+                          {partner.council_reg_number || 'REG-VERIFIED'}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Phone</div>
+                        <div className="text-xs font-semibold text-slate-700">{partner.phone || 'N/A'}</div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-[10px] uppercase font-bold text-slate-400">Phone</div>
-                      <div className="text-xs font-semibold text-slate-700">{partner.phone || 'N/A'}</div>
-                    </div>
+                    {partner.email && (
+                      <div className="pt-1 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500 font-medium">
+                        <span className="font-bold text-slate-400 uppercase text-[9px]">Email:</span>
+                        <span className="text-slate-700 font-semibold truncate max-w-[200px]">{partner.email}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -794,8 +805,8 @@ export default function PartnersManager({ portalRole }: Props) {
                 />
               </div>
 
-              {/* Full Name & Phone */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Full Name, Email & Phone */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-700 font-bold mb-1">Full Name *</label>
                   <input
@@ -803,6 +814,17 @@ export default function PartnersManager({ portalRole }: Props) {
                     required
                     value={editForm.name}
                     onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-600 font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-600 font-medium"
                   />
                 </div>

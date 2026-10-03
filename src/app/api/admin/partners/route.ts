@@ -166,6 +166,7 @@ export async function PUT(request: Request) {
     const {
       userId,
       name,
+      email,
       phone,
       image,
       verificationStatus,
@@ -190,16 +191,17 @@ export async function PUT(request: Request) {
     }
 
     if (isDbConfigured) {
-      // 1. Update user identity if name, phone, or image provided
-      if (name || phone || image) {
+      // 1. Update user identity if name, email, phone, or image provided
+      if (name || email || phone || image) {
         await executeQuery(
           `UPDATE users
            SET name = COALESCE($1, name),
-               phone = COALESCE($2, phone),
-               image = COALESCE($3, image),
+               email = COALESCE($2, email),
+               phone = COALESCE($3, phone),
+               image = COALESCE($4, image),
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $4`,
-          [name, phone, image, userId]
+           WHERE id = $5`,
+          [name, email, phone, image, userId]
         );
       }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { sendDoctorAppointmentEmail } from '@/lib/email';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -104,6 +105,43 @@ export async function POST(request: Request) {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [`inv_${Date.now()}`, bookingId, userId, `INV-2026-${bookingNumber.replace('HD-', '')}`, serviceTitle, subtotal, tax, totalAmount, paymentRef]
       );
+
+      // Trigger Email Notification to Doctor
+      let targetDoctorEmail = null;
+      let targetDoctorName = partnerName || 'Practitioner';
+
+      if (partnerId) {
+        const docUserRes = await executeQuery(`SELECT email, name FROM users WHERE id = $1 LIMIT 1`, [partnerId]);
+        if (docUserRes.isConnected && docUserRes.rows.length > 0) {
+          targetDoctorEmail = docUserRes.rows[0].email;
+          if (docUserRes.rows[0].name) targetDoctorName = docUserRes.rows[0].name;
+        }
+      }
+
+      if (!targetDoctorEmail) {
+        // Fallback to first available doctor in system if no specific partner assigned
+        const defaultDocRes = await executeQuery(
+          `SELECT u.email, u.name FROM users u JOIN partner_profiles p ON u.id = p.user_id WHERE u.role = 'PARTNER' LIMIT 1`
+        );
+        if (defaultDocRes.isConnected && defaultDocRes.rows.length > 0) {
+          targetDoctorEmail = defaultDocRes.rows[0].email;
+          targetDoctorName = defaultDocRes.rows[0].name;
+        }
+      }
+
+      if (targetDoctorEmail) {
+        sendDoctorAppointmentEmail({
+          doctorEmail: targetDoctorEmail,
+          doctorName: targetDoctorName,
+          patientName,
+          serviceTitle,
+          scheduledDate,
+          scheduledTimeSlot,
+          addressText: addressText || '123 Green Park, Bengaluru',
+          bookingNumber,
+          totalAmount,
+        }).catch((err) => console.error('Error dispatching doctor email:', err));
+      }
 
       if (insertRes.isConnected && insertRes.rows.length > 0) {
         return NextResponse.json({ success: true, booking: insertRes.rows[0] });

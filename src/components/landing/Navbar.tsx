@@ -154,7 +154,7 @@ export default function Navbar() {
                     className="tj-primary-btn"
                   >
                     <span className="btn_inner">
-                      <span className="btn_text font-bold text-xs">Book Free Demo</span>
+                      <span className="btn_text font-bold text-xs">Book Care</span>
                       <span className="btn_icon">
                         <span>
                           <ArrowRight className="w-3.5 h-3.5" />

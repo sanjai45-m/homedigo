@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { sendDoctorAppointmentEmail } from '@/lib/email';
 
 export async function GET() {
   if (isDbConfigured) {
@@ -38,8 +39,29 @@ export async function PUT(request: Request) {
          RETURNING *`,
         [status, partnerId, partnerName, partnerTitle, bookingId]
       );
+
       if (updateRes.isConnected && updateRes.rows.length > 0) {
-        return NextResponse.json({ success: true, booking: updateRes.rows[0] });
+        const booking = updateRes.rows[0];
+
+        // Notify Doctor via Email if partner assigned
+        if (partnerId) {
+          const docRes = await executeQuery(`SELECT email, name FROM users WHERE id = $1 LIMIT 1`, [partnerId]);
+          if (docRes.isConnected && docRes.rows.length > 0 && docRes.rows[0].email) {
+            sendDoctorAppointmentEmail({
+              doctorEmail: docRes.rows[0].email,
+              doctorName: docRes.rows[0].name || partnerName || 'Practitioner',
+              patientName: booking.patient_name || 'Patient',
+              serviceTitle: booking.service_title || 'Home Visit',
+              scheduledDate: booking.scheduled_date || 'Today',
+              scheduledTimeSlot: booking.scheduled_time_slot || 'Standard Slot',
+              addressText: booking.address_text || 'Patient Location',
+              bookingNumber: booking.booking_number || bookingId,
+              totalAmount: Number(booking.total_amount || 0),
+            }).catch((e) => console.error('Dispatch Email Error:', e));
+          }
+        }
+
+        return NextResponse.json({ success: true, booking });
       }
     }
 
