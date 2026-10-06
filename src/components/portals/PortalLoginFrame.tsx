@@ -12,6 +12,11 @@ const content = {
     accent: 'with you.',
     description: 'A little closer to your patients. A little simpler to manage your day. Your home care practice, all in one place.',
     features: ['Your visits, thoughtfully organised', 'Care that goes beyond the clinic', 'A clear view of your earnings'],
+    image: '/images/doctor-login.webp',
+    imageAlt: 'A doctor listening to an elderly patient during a home visit',
+    imagePosition: 'center 35%',
+    imageCaption: 'Good care. Closer to home.',
+    imageNote: 'Personal connections. Thoughtful home visits.',
   },
   admin: {
     label: 'Admin portal',
@@ -19,6 +24,11 @@ const content = {
     accent: 'a caring team.',
     description: 'Connect the right people to the right care. Bring your doctors, services, and daily operations together.',
     features: ['Coordinate every home visit', 'Support your clinician network', 'Keep everyday care running smoothly'],
+    image: '/images/admin-login.webp',
+    imageAlt: 'A care coordinator and a clinician reviewing a home visit schedule together',
+    imagePosition: 'center top',
+    imageCaption: 'Every visit starts with teamwork.',
+    imageNote: 'Connecting clinicians, patients, and care.',
   },
   'super-admin': {
     label: 'Super admin portal',
@@ -26,6 +36,11 @@ const content = {
     accent: 'A healthier tomorrow.',
     description: 'Give your teams the support to deliver exceptional home care. Your people, network, and platform in one view.',
     features: ['Empower your operations team', 'Grow a trusted care network', 'Oversee revenue and settlements'],
+    image: '/images/super-admin-login.webp',
+    imageAlt: 'Healthcare leaders discussing plans and reviewing a tablet around a meeting table',
+    imagePosition: 'center 35%',
+    imageCaption: 'Leading a healthier tomorrow.',
+    imageNote: 'A shared vision for better care at home.',
   },
 };
 
@@ -49,8 +64,15 @@ export default function PortalLoginFrame({ role, title, description, children }:
           <h1>{copy.headline}<br /><em>{copy.accent}</em></h1>
           <p>{copy.description}</p>
           <div className={styles.loginPhoto}>
-            <Image src="/images/home-care-hero.webp" alt="A healthcare professional providing personal care at home" fill sizes="(max-width: 900px) 90vw, 45vw" priority />
-            <div className={styles.photoNote}><HeartHandshake size={23} /><span><strong>Good care. Closer to home.</strong><small>The people behind a healthier everyday.</small></span></div>
+            <Image
+              src={copy.image}
+              alt={copy.imageAlt}
+              fill
+              sizes="(max-width: 900px) 90vw, 45vw"
+              style={{ objectPosition: copy.imagePosition }}
+              loading="eager"
+            />
+            <div className={styles.photoNote}><HeartHandshake size={23} /><span><strong>{copy.imageCaption}</strong><small>{copy.imageNote}</small></span></div>
           </div>
           <ul className={styles.loginFeatures}>{copy.features.map(feature => <li key={feature}><ShieldCheck size={16} aria-hidden="true" />{feature}</li>)}</ul>
         </section>
