@@ -5,21 +5,19 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import {
-  HeartPulse,
   Calendar,
   Navigation,
   DollarSign,
-  User,
-  ShieldCheck,
   Power,
   ChevronRight,
   ExternalLink,
   LogOut,
-  Sparkles,
   Layers,
   Loader2
 } from 'lucide-react';
-import Logo from '@/components/shared/Logo';
+import PortalBrand from '@/components/portals/PortalBrand';
+import PortalHeader from '@/components/portals/PortalHeader';
+import styles from '@/components/portals/portal.module.css';
 
 const partnerNavItems = [
   { href: '/partner/dashboard', label: "Today's Field Queue", icon: Calendar },
@@ -74,8 +72,8 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   // Show loader while checking session (except on login page)
   if (status === 'loading' && pathname !== '/partner/login') {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-teal-600 animate-spin" />
+      <div className={`${styles.theme} min-h-screen flex items-center justify-center`} role="status" aria-label="Loading clinician workspace">
+        <Loader2 className="w-8 h-8 text-teal-600 animate-spin" aria-hidden="true" />
       </div>
     );
   }
@@ -112,14 +110,15 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col md:flex-row">
+    <div className={`${styles.theme} ${styles.shell}`}>
+      <a href="#portal-content" className={styles.skipLink}>Skip to main content</a>
       {/* Sidebar */}
 
-      <aside className="w-full md:w-72 bg-white border-r border-slate-200/90 flex flex-col justify-between shrink-0 shadow-sm">
+      <aside className={styles.sidebar}>
         <div>
           {/* Brand header */}
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-            <Logo size="md" href="/partner/dashboard" showBadge="Clinician" />
+            <PortalBrand href="/partner/dashboard" label="Clinician" />
           </div>
 
           {/* Clinician On-Duty Switch */}
@@ -168,6 +167,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold transition-all ${
                     isActive
                       ? 'bg-gradient-to-r from-teal-700 to-emerald-600 text-white shadow-md shadow-teal-700/20'
@@ -248,8 +248,9 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto min-h-screen">
-        {children}
+      <main id="portal-content" className={styles.workspace}>
+        <PortalHeader label="Clinician workspace" />
+        <div key={pathname} className={styles.page}>{children}</div>
       </main>
     </div>
   );

@@ -5,23 +5,23 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import {
-  ShieldAlert,
   Activity,
   Layers,
   UserCheck,
   Radio,
-  Sliders,
   LogOut,
   ChevronRight,
   ExternalLink,
   DollarSign,
   Sparkles
 } from 'lucide-react';
-import Logo from '@/components/shared/Logo';
+import PortalBrand from '@/components/portals/PortalBrand';
+import PortalHeader from '@/components/portals/PortalHeader';
+import styles from '@/components/portals/portal.module.css';
 
 const adminNavItems = [
   { href: '/admin/dashboard', label: 'Admin Cockpit', icon: Activity },
-  { href: '/admin/specialities', label: 'Doctor Specialities (CRUD)', icon: Sparkles },
+  { href: '/admin/specialities', label: 'Doctor Specialities', icon: Sparkles },
   { href: '/admin/services', label: 'Services & Dynamic Pricing', icon: DollarSign },
   { href: '/admin/partners', label: 'Doctor & Partner KYC Desk', icon: UserCheck },
   { href: '/admin/dispatch', label: 'Live Dispatch & Reassignment', icon: Radio },
@@ -38,13 +38,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col md:flex-row">
+    <div className={`${styles.theme} ${styles.shell}`}>
+      <a href="#portal-content" className={styles.skipLink}>Skip to main content</a>
       {/* Sidebar */}
-      <aside className="w-full md:w-72 bg-white border-r border-slate-200/90 flex flex-col justify-between shrink-0 shadow-sm">
+      <aside className={styles.sidebar}>
         <div>
           {/* Brand header */}
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-            <Logo size="md" href="/admin/dashboard" showBadge="Admin" />
+            <PortalBrand href="/admin/dashboard" label="Admin" />
           </div>
 
           {/* Navigation links */}
@@ -59,6 +60,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold transition-all ${
                     isActive
                       ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-md shadow-amber-500/20'
@@ -129,8 +131,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto min-h-screen">
-        {children}
+      <main id="portal-content" className={styles.workspace}>
+        <PortalHeader label="Operations workspace" />
+        <div key={pathname} className={styles.page}>{children}</div>
       </main>
     </div>
   );

@@ -7,25 +7,22 @@ import { useSession, signOut } from 'next-auth/react';
 import {
   Sparkles,
   ShieldAlert,
-  Users,
   UserCheck,
   CreditCard,
-  Sliders,
   ChevronRight,
   ExternalLink,
   LogOut,
-  Building,
-  TrendingUp,
   Activity,
-  Layers,
-  Lock
+  Layers
 } from 'lucide-react';
-import Logo from '@/components/shared/Logo';
+import PortalBrand from '@/components/portals/PortalBrand';
+import PortalHeader from '@/components/portals/PortalHeader';
+import styles from '@/components/portals/portal.module.css';
 
 const superAdminNavItems = [
   { href: '/super-admin/dashboard', label: 'Executive Cockpit', icon: Activity },
   { href: '/super-admin/admins', label: 'Admin Provisioning', icon: ShieldAlert },
-  { href: '/super-admin/specialities', label: 'Doctor Specialities (CRUD)', icon: Sparkles },
+  { href: '/super-admin/specialities', label: 'Doctor Specialities', icon: Sparkles },
   { href: '/super-admin/partners', label: 'Partner Governance', icon: UserCheck },
   { href: '/super-admin/billing', label: 'Platform Billing & Payouts', icon: CreditCard },
 ];
@@ -41,13 +38,14 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   }
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 flex flex-col md:flex-row">
+    <div className={`${styles.theme} ${styles.shell}`}>
+      <a href="#portal-content" className={styles.skipLink}>Skip to main content</a>
       {/* Sidebar */}
-      <aside className="w-full md:w-72 bg-white border-r border-slate-200/90 flex flex-col justify-between shrink-0 shadow-sm">
+      <aside className={styles.sidebar}>
         <div>
           {/* Brand header */}
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-            <Logo size="md" href="/super-admin/dashboard" showBadge="Super Admin" />
+            <PortalBrand href="/super-admin/dashboard" label="Super Admin" />
           </div>
 
           {/* Navigation links */}
@@ -62,6 +60,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-current={isActive ? 'page' : undefined}
                   className={`flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold transition-all ${
                     isActive
                       ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md shadow-indigo-600/20'
@@ -132,8 +131,9 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto min-h-screen">
-        {children}
+      <main id="portal-content" className={styles.workspace}>
+        <PortalHeader label="Platform oversight" />
+        <div key={pathname} className={styles.page}>{children}</div>
       </main>
     </div>
   );
