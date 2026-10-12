@@ -38,7 +38,8 @@ export function ensureAppointmentSchema() {
       `CREATE INDEX IF NOT EXISTS appointment_emails_due_idx
          ON appointment_emails (due_at) WHERE sent_at IS NULL`,
       `ALTER TABLE appointment_emails DROP CONSTRAINT IF EXISTS appointment_emails_kind_check,
-         ADD CONSTRAINT appointment_emails_kind_check CHECK (kind IN ('PATIENT_CONFIRMATION', 'DOCTOR_REMINDER', 'DOCTOR_REVIEW'))`,
+         ADD CONSTRAINT appointment_emails_kind_check CHECK (kind IN ('PATIENT_REQUEST', 'PATIENT_CONFIRMATION', 'DOCTOR_REMINDER', 'DOCTOR_REVIEW')),
+         ALTER COLUMN partner_id DROP NOT NULL`,
     ];
     for (const statement of statements) {
       const result = await executeQuery(statement);

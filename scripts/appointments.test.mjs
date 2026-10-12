@@ -20,7 +20,7 @@ const dependencies = {
   'next-auth/next': { getServerSession: async () => session },
   '@/lib/auth': { authOptions: {} },
   nodemailer: { createTransport: () => ({ sendMail: async message => {
-    if (smtpFails) throw Object.assign(new Error('SMTP test failure'), { code: 'ETIMEDOUT' });
+    if (smtpFails === true || smtpFails === message.to) throw Object.assign(new Error('SMTP test failure'), { code: 'ETIMEDOUT' });
     messages.push(message);
     return { accepted: [message.to], messageId: `test-${messages.length}` };
   } }) },
@@ -322,13 +322,16 @@ test('booking uses the signed-in patient and remains pending with normalized IST
   assert.equal(messages[0].to, 'doctor@test.local');
 });
 
-test('new booking rejects past times and does not send to an arbitrary unassigned doctor', async () => {
+test('new booking rejects past times and sends only the patient acknowledgement when no doctor is assigned', async () => {
   session = { user: { id: 'patient', role: 'PATIENT' } };
   const payload = { ...bookingPayload(), partnerId: null, scheduledDate: '2020-01-01' };
   assert.equal((await bookings.POST({ json: async () => payload })).status, 400);
   payload.scheduledDate = '2099-03-01';
   assert.equal((await bookings.POST({ json: async () => payload })).status, 200);
-  assert.equal(messages.length, 0);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, 'patient@test.local');
+  assert.match(messages[0].subject, /request has been received/);
+  assert.match(messages[0].text, /not confirmed yet/);
 });
 
 test('new email templates escape patient content and include IST and the correct portal', async () => {
@@ -340,7 +343,7 @@ test('new email templates escape patient content and include IST and the correct
   assert.match(messages[0].html, /\/patient\/appointments\/booking/);
 });
 
-test('receipt booking sends only doctor review; acceptance verifies payment, invoices and emails patient once', async () => {
+test('receipt booking acknowledges the patient and notifies the doctor; approval sends a separate confirmation once', async () => {
   session = { user: { id: 'patient', role: 'PATIENT' } };
   const payload = bookingPayload();
   const created = await bookings.POST({ json: async () => payload });
@@ -349,10 +352,13 @@ test('receipt booking sends only doctor review; acceptance verifies payment, inv
   assert.equal(created.body.booking.payment_status, 'UNDER_REVIEW');
   assert.equal(created.body.booking.payment_ref, null);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
-  assert.equal(messages.length, 1);
+  assert.equal(messages.length, 2);
   assert.equal(messages[0].to, 'doctor@test.local');
   assert.ok(messages[0].html.includes(`/partner/visit/${id}`));
   assert.match(messages[0].text, /verify payment and accept/);
+  assert.equal(messages[1].to, 'patient@test.local');
+  assert.match(messages[1].subject, /request has been received/);
+  assert.match(messages[1].text, /not confirmed yet/);
   session = { user: { id: 'doctor', role: 'PARTNER' } };
   const context = { params: Promise.resolve({ id }) };
   assert.equal((await confirm({ json: async () => ({}) }, context)).status, 400);
@@ -365,11 +371,12 @@ test('receipt booking sends only doctor review; acceptance verifies payment, inv
   assert.equal(confirmed.body.visit.payment_status, 'PAID');
   assert.equal(confirmed.body.visit.payment_verified_by, 'doctor');
   assert.ok(confirmed.body.visit.payment_verified_at);
-  assert.equal(messages.length, 2);
-  assert.equal(messages[1].to, 'patient@test.local');
+  assert.equal(messages.length, 3);
+  assert.equal(messages[2].to, 'patient@test.local');
+  assert.match(messages[2].subject, /appointment is confirmed/);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 1);
   await confirm({ json: async () => ({ paymentVerified: true }) }, context);
-  assert.equal(messages.length, 2);
+  assert.equal(messages.length, 3);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 1);
 });
 
@@ -406,7 +413,7 @@ test('rejects missing, disguised and oversized receipts, incorrect totals and ot
   assert.equal(messages.length, 0);
 });
 
-test('concurrent submission retries create one booking, receipt and doctor review email', async () => {
+test('concurrent submission retries create one booking, receipt and one email of each kind', async () => {
   session = { user: { id: 'patient', role: 'PATIENT' } };
   const payload = bookingPayload();
   const responses = await Promise.all([bookings.POST({ json: async () => payload }), bookings.POST({ json: async () => payload })]);
@@ -414,7 +421,9 @@ test('concurrent submission retries create one booking, receipt and doctor revie
   assert.equal(responses[0].body.booking.id, responses[1].body.booking.id);
   assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 1);
   assert.equal((await db.query('SELECT * FROM payment_receipts')).rows.length, 1);
-  assert.equal(messages.length, 1);
+  assert.equal(messages.length, 2);
+  assert.equal(messages.filter(m => m.to === 'patient@test.local').length, 1);
+  assert.equal(messages.filter(m => m.to === 'doctor@test.local').length, 1);
 });
 
 test('doctor review email retries after SMTP failure without confirming payment', async () => {
@@ -427,9 +436,66 @@ test('doctor review email retries after SMTP failure without confirming payment'
   assert.equal(job.last_error, 'ETIMEDOUT');
   smtpFails = false;
   await db.exec("UPDATE appointment_emails SET due_at = NOW() - INTERVAL '1 second'");
-  assert.equal((await runCron()).body.sent, 1);
+  assert.equal((await runCron()).body.sent, 2);
   assert.equal(messages[0].to, 'doctor@test.local');
+  assert.equal(messages[1].to, 'patient@test.local');
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
+});
+
+test('patient acknowledgement retries independently after doctor notification succeeds', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  smtpFails = 'patient@test.local';
+  const created = await bookings.POST({ json: async () => ({ ...bookingPayload(), email: 'untrusted@test.local' }) });
+  assert.equal(created.status, 200);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, 'doctor@test.local');
+  const job = (await db.query("SELECT * FROM appointment_emails WHERE kind = 'PATIENT_REQUEST'")).rows[0];
+  assert.equal(job.last_error, 'ETIMEDOUT');
+  smtpFails = false;
+  await db.exec("UPDATE appointment_emails SET due_at = NOW() WHERE kind = 'PATIENT_REQUEST'");
+  assert.equal((await runCron()).body.sent, 1);
+  assert.equal(messages[1].to, 'patient@test.local');
+  assert.match(messages[1].subject, /request has been received/);
+  assert.equal((await runCron()).body.sent, 0);
+});
+
+test('approval supersedes a delayed request acknowledgement', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  smtpFails = 'patient@test.local';
+  const created = await bookings.POST({ json: async () => bookingPayload() });
+  smtpFails = false;
+  session = { user: { id: 'doctor', role: 'PARTNER' } };
+  const result = await confirm({ json: async () => ({ paymentVerified: true }) }, { params: Promise.resolve({ id: created.body.booking.id }) });
+  assert.equal(result.body.emailSent, true);
+  await db.exec("UPDATE appointment_emails SET due_at = NOW() WHERE kind = 'PATIENT_REQUEST'");
+  assert.equal((await runCron()).body.sent, 0);
+  const patientMessages = messages.filter(m => m.to === 'patient@test.local');
+  assert.equal(patientMessages.length, 1);
+  assert.match(patientMessages[0].subject, /appointment is confirmed/);
+});
+
+test('booking rejects missing or invalid account email before creating a receipt or notification', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  for (const email of [null, '', 'invalid', 'a@test.local,b@test.local']) {
+    await db.query("UPDATE users SET email = $1 WHERE id = 'patient'", [email]);
+    const response = await bookings.POST({ json: async () => bookingPayload() });
+    assert.equal(response.status, 409);
+    assert.match(response.body.error, /valid email/);
+  }
+  assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 0);
+  assert.equal((await db.query('SELECT * FROM appointment_emails')).rows.length, 0);
+  assert.equal(messages.length, 0);
+});
+
+test('approval explicitly rejects orphaned patient accounts instead of losing confirmation email', async () => {
+  await booking();
+  await db.exec("DELETE FROM users WHERE id = 'patient'");
+  const response = await confirmBooking();
+  assert.equal(response.status, 409);
+  assert.match(response.body.error, /patient account has no valid email/);
+  assert.equal((await db.query('SELECT doctor_confirmed_at FROM bookings')).rows[0].doctor_confirmed_at, null);
+  assert.equal((await db.query('SELECT * FROM appointment_emails')).rows.length, 0);
+  assert.equal(messages.length, 0);
 });
 
 test('receipt storage failure rolls back booking and doctor notification together', async () => {
@@ -454,7 +520,8 @@ test('declined requests cannot be accepted and cannot send booking confirmation'
   assert.equal((await doctorVisit.PUT({ json: async () => ({ status: 'CANCELLED' }) }, context)).status, 200);
   assert.equal((await confirm({ json: async () => ({ paymentVerified: true }) }, context)).status, 409);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
-  assert.equal(messages.length, 1);
+  assert.equal(messages.length, 2);
+  assert.equal(messages.some(m => /appointment is confirmed/.test(m.subject)), false);
 });
 
 test('UPI links require an explicit UPI ID, encode payment details and target the chosen Android app', () => {

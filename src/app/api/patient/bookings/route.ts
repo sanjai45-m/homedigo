@@ -6,6 +6,7 @@ import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { processAppointmentEmails } from '@/lib/appointment-notifications';
 import { validateReceipt } from '@/lib/payment';
+import { isEmailAddress } from '@/lib/email';
 
 export const maxDuration = 60;
 
@@ -42,6 +43,11 @@ export async function POST(request: Request) {
     const existing = await executeQuery(`SELECT * FROM bookings WHERE user_id = $1 AND booking_request_key = $2`, [user.id, requestKey]);
     if (!existing.isConnected) throw new Error('Storage unavailable');
     if (existing.rows.length) return NextResponse.json({ success: true, booking: existing.rows[0] });
+    const account = await executeQuery(`SELECT email FROM users WHERE id = $1 AND role = 'PATIENT'`, [user.id]);
+    if (!account.isConnected) throw new Error('Storage unavailable');
+    if (!isEmailAddress(account.rows[0]?.email)) {
+      return NextResponse.json({ error: 'Your patient account needs a valid email address before booking. Please update your account or sign in again.' }, { status: 409 });
+    }
     let receipt;
     let date: string;
     let startsAt: string;
@@ -72,7 +78,7 @@ export async function POST(request: Request) {
     const paymentRef = typeof body.paymentRef === 'string' ? body.paymentRef.trim() : '';
     if (paymentRef.length > 64) return NextResponse.json({ error: 'Transaction reference must be at most 64 characters.' }, { status: 400 });
     const id = `bk_${randomUUID()}`;
-    // Receipt, pending request and durable doctor email commit together. Retries reuse the request key.
+    // Receipt, request and both notification jobs commit together. Retries reuse the request key.
     const saved = await executeQuery(
       `WITH created AS (
         INSERT INTO bookings (id, booking_number, user_id, patient_profile_id, patient_name, address_id, address_text,
@@ -85,7 +91,9 @@ export async function POST(request: Request) {
         INSERT INTO payment_receipts (booking_id, mime_type, image_base64) SELECT id, $24, $25 FROM created RETURNING booking_id
       ), queued AS (
         INSERT INTO appointment_emails (booking_id, partner_id, confirmed_at, kind, due_at)
-        SELECT id, partner_id, created_at, 'DOCTOR_REVIEW', NOW() FROM created WHERE partner_id IS NOT NULL RETURNING id
+        SELECT c.id, c.partner_id, c.created_at, k.kind, NOW() FROM created c
+        CROSS JOIN (VALUES ('DOCTOR_REVIEW'), ('PATIENT_REQUEST')) k(kind)
+        WHERE k.kind = 'PATIENT_REQUEST' OR c.partner_id IS NOT NULL RETURNING id
       ) SELECT * FROM created`,
       [id, `HD-${randomUUID().slice(0, 18).toUpperCase()}`, user.id, profile.id, profile.full_name, address.id,
         [address.address_line1, address.address_line2, address.city, address.pincode].filter(Boolean).join(', '),
@@ -97,7 +105,7 @@ export async function POST(request: Request) {
     if (!saved.isConnected) throw new Error('Could not save booking');
     const booking = saved.rows[0] || (await executeQuery(`SELECT * FROM bookings WHERE user_id = $1 AND booking_request_key = $2`, [user.id, requestKey])).rows[0];
     if (!booking) throw new Error('Could not save booking');
-    try { await processAppointmentEmails(booking.id); } catch { console.error('[APPOINTMENT EMAIL] Doctor review email queued for retry.'); }
+    try { await processAppointmentEmails(booking.id); } catch { console.error('[APPOINTMENT EMAIL] Booking emails queued for retry.'); }
     return NextResponse.json({ success: true, booking, message: 'Receipt submitted. Your doctor will verify payment before accepting the appointment.' });
   } catch {
     return NextResponse.json({ error: 'Could not save your request. Please retry with the same receipt; do not pay again.' }, { status: 503 });

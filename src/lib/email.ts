@@ -143,18 +143,29 @@ export interface AppointmentEmailParams {
   scheduledTimeSlot: string;
 }
 
+export function isEmailAddress(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 254 && /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(value);
+}
+
+export async function sendAppointmentRequestEmail(params: AppointmentEmailParams): Promise<EmailResult> {
+  return sendAppointmentUpdate(params, 'request');
+}
+
 export async function sendAppointmentConfirmationEmail(params: AppointmentEmailParams): Promise<EmailResult> {
-  return sendAppointmentUpdate(params, false);
+  return sendAppointmentUpdate(params, 'confirmation');
 }
 
 export async function sendDoctorReminderEmail(params: AppointmentEmailParams): Promise<EmailResult> {
-  return sendAppointmentUpdate(params, true);
+  return sendAppointmentUpdate(params, 'reminder');
 }
 
-function sendAppointmentUpdate(params: AppointmentEmailParams, reminder: boolean): Promise<EmailResult> {
+function sendAppointmentUpdate(params: AppointmentEmailParams, kind: 'request' | 'confirmation' | 'reminder'): Promise<EmailResult> {
+  const reminder = kind === 'reminder';
   const portalUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://homedigo.vercel.app').replace(/\/$/, '');
-  const title = reminder ? 'Your appointment is starting soon' : 'Your appointment is confirmed';
-  const message = reminder
+  const title = kind === 'request' ? 'Your appointment request has been received' : reminder ? 'Your appointment is starting soon' : 'Your appointment is confirmed';
+  const message = kind === 'request'
+    ? 'We received your appointment request and payment receipt. Payment verification and doctor approval are pending. Your appointment is not confirmed yet; we will email you after approval.'
+    : reminder
     ? 'Your confirmed appointment starts soon. Please prepare for your visit at the scheduled time below.'
     : `${params.doctorName} has confirmed availability for your appointment.`;
   const path = reminder ? '/partner/dashboard' : `/patient/appointments/${encodeURIComponent(params.bookingId)}`;
@@ -179,6 +190,7 @@ function sendAppointmentUpdate(params: AppointmentEmailParams, reminder: boolean
 }
 
 async function sendEmail(message: { to: string; subject: string; html: string; text?: string }): Promise<EmailResult> {
+  if (!isEmailAddress(message.to)) return emailFailure('RECIPIENT_INVALID', 'A valid recipient email address is required.');
   const host = process.env.SMTP_HOST?.trim();
   const user = process.env.SMTP_USER?.trim();
   const pass = process.env.SMTP_PASS;

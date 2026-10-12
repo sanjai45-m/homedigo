@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { executeQuery } from './db';
-import { sendAppointmentConfirmationEmail, sendDoctorReminderEmail, sendDoctorAppointmentEmail } from './email';
+import { sendAppointmentConfirmationEmail, sendAppointmentRequestEmail, sendDoctorReminderEmail, sendDoctorAppointmentEmail } from './email';
 import { ensureAppointmentSchema } from './appointment-schema';
 
 interface EmailJob {
   id: string;
-  kind: 'PATIENT_CONFIRMATION' | 'DOCTOR_REMINDER' | 'DOCTOR_REVIEW';
+  kind: 'PATIENT_REQUEST' | 'PATIENT_CONFIRMATION' | 'DOCTOR_REMINDER' | 'DOCTOR_REVIEW';
   address_text: string;
   total_amount: number;
   booking_id: string;
@@ -19,6 +19,17 @@ interface EmailJob {
   scheduled_time_slot: string;
 }
 
+// Request acknowledgements belong to the patient even before a doctor is assigned.
+// Once approved, send the confirmation instead of a delayed "pending" message.
+const eligibleJob = `(
+  (e.kind = 'PATIENT_REQUEST' AND b.doctor_confirmed_at IS NULL AND b.status IN ('PENDING', 'ASSIGNED'))
+  OR (b.partner_id = e.partner_id AND (
+    (e.kind = 'DOCTOR_REVIEW' AND b.doctor_confirmed_at IS NULL AND b.status IN ('PENDING', 'ASSIGNED'))
+    OR (e.kind IN ('PATIENT_CONFIRMATION', 'DOCTOR_REMINDER') AND b.doctor_confirmed_at = e.confirmed_at
+      AND b.status IN ('CONFIRMED', 'ASSIGNED', 'ON_THE_WAY', 'ARRIVED'))
+  ))
+) AND b.appointment_starts_at > NOW()`;
+
 export async function processAppointmentEmails(bookingId?: string) {
   await ensureAppointmentSchema();
   const token = randomUUID();
@@ -30,12 +41,8 @@ export async function processAppointmentEmails(bookingId?: string) {
        JOIN bookings b ON b.id = e.booking_id
        WHERE e.sent_at IS NULL AND e.due_at <= NOW()
          AND (e.lease_until IS NULL OR e.lease_until < NOW())
-         AND b.partner_id = e.partner_id
-         AND ((e.kind = 'DOCTOR_REVIEW' AND b.doctor_confirmed_at IS NULL AND b.status IN ('PENDING', 'ASSIGNED'))
-           OR (e.kind != 'DOCTOR_REVIEW' AND b.doctor_confirmed_at = e.confirmed_at
-             AND b.status IN ('CONFIRMED', 'ASSIGNED', 'ON_THE_WAY', 'ARRIVED')))
-         AND b.appointment_starts_at > NOW()
-         AND ($1::text IS NULL OR (e.booking_id = $1 AND e.kind IN ('PATIENT_CONFIRMATION', 'DOCTOR_REVIEW')))
+         AND ${eligibleJob}
+         AND ($1::text IS NULL OR (e.booking_id = $1 AND e.kind IN ('PATIENT_REQUEST', 'PATIENT_CONFIRMATION', 'DOCTOR_REVIEW')))
        ORDER BY e.due_at, e.id
        LIMIT 10 FOR UPDATE OF e SKIP LOCKED
      ), claimed AS (
@@ -60,17 +67,14 @@ export async function processAppointmentEmails(bookingId?: string) {
     const current = await executeQuery(
       `SELECT e.id FROM appointment_emails e JOIN bookings b ON b.id = e.booking_id
        WHERE e.id = $1 AND e.lease_token = $2 AND e.sent_at IS NULL
-         AND b.partner_id = e.partner_id
-         AND ((e.kind = 'DOCTOR_REVIEW' AND b.doctor_confirmed_at IS NULL AND b.status IN ('PENDING', 'ASSIGNED'))
-           OR (e.kind != 'DOCTOR_REVIEW' AND b.doctor_confirmed_at = e.confirmed_at
-             AND b.status IN ('CONFIRMED', 'ASSIGNED', 'ON_THE_WAY', 'ARRIVED')))
-         AND b.appointment_starts_at > NOW()`, [job.id, token],
+         AND ${eligibleJob}`, [job.id, token],
     );
     if (!current.isConnected) throw new Error('Could not verify appointment email.');
-    if (!current.rows.length) return 'skipped';
+    if (!current.rows.length) return { outcome: 'skipped', kind: job.kind };
 
-    const to = job.kind === 'PATIENT_CONFIRMATION' ? job.patient_email : job.doctor_email;
-    const send = job.kind === 'PATIENT_CONFIRMATION' ? sendAppointmentConfirmationEmail : sendDoctorReminderEmail;
+    const to = job.kind.startsWith('PATIENT_') ? job.patient_email : job.doctor_email;
+    const send = job.kind === 'PATIENT_REQUEST' ? sendAppointmentRequestEmail
+      : job.kind === 'PATIENT_CONFIRMATION' ? sendAppointmentConfirmationEmail : sendDoctorReminderEmail;
     const result = to ? job.kind === 'DOCTOR_REVIEW' ? await sendDoctorAppointmentEmail({
       doctorEmail: to, doctorName: job.doctor_name, patientName: job.patient_name,
       bookingId: job.booking_id, bookingNumber: job.booking_number, serviceTitle: job.service_title,
@@ -81,7 +85,7 @@ export async function processAppointmentEmails(bookingId?: string) {
       bookingId: job.booking_id,
       bookingNumber: job.booking_number,
       patientName: job.patient_name,
-      doctorName: job.doctor_name,
+      doctorName: job.doctor_name || 'Awaiting assignment',
       serviceTitle: job.service_title,
       scheduledDate: job.scheduled_date,
       scheduledTimeSlot: job.scheduled_time_slot,
@@ -97,12 +101,13 @@ export async function processAppointmentEmails(bookingId?: string) {
       result.success ? [job.id, token] : [job.id, token, result.code],
     );
     if (!saved.isConnected) throw new Error('Could not record appointment email delivery.');
-    return result.success ? 'sent' : 'failed';
+    return { outcome: result.success ? 'sent' : 'failed', kind: job.kind };
   }));
   return {
     processed: outcomes.length,
-    sent: outcomes.filter(value => value === 'sent').length,
-    failed: outcomes.filter(value => value === 'failed').length,
-    skipped: outcomes.filter(value => value === 'skipped').length,
+    sent: outcomes.filter(value => value.outcome === 'sent').length,
+    sentKinds: outcomes.filter(value => value.outcome === 'sent').map(value => value.kind),
+    failed: outcomes.filter(value => value.outcome === 'failed').length,
+    skipped: outcomes.filter(value => value.outcome === 'skipped').length,
   };
 }

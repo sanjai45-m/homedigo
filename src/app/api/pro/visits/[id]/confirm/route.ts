@@ -4,6 +4,7 @@ import { executeQuery, isDbConfigured } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 import { processAppointmentEmails } from '@/lib/appointment-notifications';
+import { isEmailAddress } from '@/lib/email';
 
 export const maxDuration = 60;
 
@@ -31,6 +32,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     }
     if (!['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(booking.status)) {
       return NextResponse.json({ error: 'This appointment can no longer be confirmed.' }, { status: 409 });
+    }
+    const patient = await executeQuery(`SELECT email FROM users WHERE id = $1 AND role = 'PATIENT'`, [booking.user_id]);
+    if (!patient.isConnected) throw new Error('Patient account unavailable.');
+    if (!isEmailAddress(patient.rows[0]?.email)) {
+      return NextResponse.json({ error: 'The patient account has no valid email address. Ask the patient to correct their account before accepting this request.' }, { status: 409 });
     }
     if (booking.payment_status !== 'PAID') {
       const body = await request.json().catch(() => ({}));
@@ -91,7 +97,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     let emailSent = false;
     try {
-      emailSent = (await processAppointmentEmails(id)).sent > 0;
+      emailSent = (await processAppointmentEmails(id)).sentKinds.includes('PATIENT_CONFIRMATION');
     } catch {
       console.error('[APPOINTMENT EMAIL] Confirmation email remains queued for retry.');
     }
