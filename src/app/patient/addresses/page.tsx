@@ -31,8 +31,8 @@ export default function SavedAddressesPage() {
   const [landmark, setLandmark] = useState('');
   const [city, setCity] = useState('Bengaluru');
   const [pincode, setPincode] = useState('560038');
-  const [lat, setLat] = useState(12.9716);
-  const [lng, setLng] = useState(77.5946);
+  const [lat, setLat] = useState<number | null>(null);
+  const [lng, setLng] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -63,8 +63,8 @@ export default function SavedAddressesPage() {
     setLandmark('');
     setCity('Bengaluru');
     setPincode('560038');
-    setLat(12.9716);
-    setLng(77.5946);
+    setLat(null);
+    setLng(null);
     setIsModalOpen(true);
   };
 
@@ -76,8 +76,8 @@ export default function SavedAddressesPage() {
     setLandmark(addr.landmark || '');
     setCity(addr.city || 'Bengaluru');
     setPincode(addr.pincode || '560038');
-    setLat(addr.lat ? Number(addr.lat) : 12.9716);
-    setLng(addr.lng ? Number(addr.lng) : 77.5946);
+    setLat(addr.lat != null ? Number(addr.lat) : null);
+    setLng(addr.lng != null ? Number(addr.lng) : null);
     setIsModalOpen(true);
   };
 
@@ -321,10 +321,11 @@ export default function SavedAddressesPage() {
                   1. Auto-Detect / Search Locality
                 </span>
                 <LocationPicker
+                  onLocationClear={() => { setLat(null); setLng(null); }}
                   initialLocationName={addressLine2 || addressLine1}
                   initialCity={city}
-                  initialLat={lat}
-                  initialLng={lng}
+                  initialLat={lat ?? undefined}
+                  initialLng={lng ?? undefined}
                   onLocationSelect={handleLocationSelected}
                 />
               </div>

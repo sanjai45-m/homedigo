@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -23,6 +23,7 @@ import {
   Check,
   Loader2
 } from 'lucide-react';
+import { coordinates } from '@/lib/tracking';
 import { generateInvoicePdf } from '@/lib/pdf-generator';
 
 const LiveTelemetryMap = dynamic(
@@ -39,7 +40,8 @@ export default function AppointmentDetailPage() {
   const [activeTab, setActiveTab] = useState<'TELEMETRY' | 'VITALS' | 'INVOICE'>('TELEMETRY');
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   // Live partner GPS position polled from server
-  const [partnerLivePos, setPartnerLivePos] = useState<{ lat: number; lng: number } | null>(null);
+  const [trackingData, setTrackingData] = useState<{ lat: number | null; lng: number | null; patientLat: number | null; patientLng: number | null; updatedAt: string | null; isLive: boolean } | null>(null);
+  const [trackingError, setTrackingError] = useState('');
   // Proximity info from location API
   const [proximityInfo, setProximityInfo] = useState<{
     distanceKm: number | null;
@@ -47,7 +49,7 @@ export default function AppointmentDetailPage() {
     isImmediate: boolean;
     etaMins: number | null;
   } | null>(null);
-  const [hasChimed, setHasChimed] = useState(false);
+  const hasChimed = useRef(false);
 
   const playProximityChime = () => {
     try {
@@ -85,46 +87,47 @@ export default function AppointmentDetailPage() {
     loadBooking();
   }, [id]);
 
-  // Poll partner GPS every 5 seconds while visit is active
+  // Poll only this appointment; failed requests retain the last position without claiming it is live.
   useEffect(() => {
     if (!id) return;
-    const TERMINAL_STATUSES = ['COMPLETED', 'CANCELLED'];
-
+    let active = true, busy = false;
+    let controller: AbortController | undefined;
+    hasChimed.current = false;
+    setTrackingData(null);
     const poll = async () => {
+      if (busy) return;
+      busy = true;
+      controller = new AbortController();
+      const timeout = setTimeout(() => controller?.abort(), 10000);
       try {
-        const res = await fetch(`/api/pro/visits/${id}/location`);
+        const res = await fetch(`/api/pro/visits/${encodeURIComponent(id)}/location`, { cache: 'no-store', signal: controller.signal });
         const data = await res.json();
-        if (data.lat !== null && data.lng !== null) {
-          setPartnerLivePos({ lat: data.lat, lng: data.lng });
+        if (!res.ok) throw new Error(data.error || 'Location is unavailable.');
+        if (!active) return;
+        const doctor = coordinates(data.lat, data.lng), patient = coordinates(data.patientLat, data.patientLng);
+        setTrackingError('');
+        setTrackingData({ lat: doctor?.lat ?? null, lng: doctor?.lng ?? null, patientLat: patient?.lat ?? null,
+          patientLng: patient?.lng ?? null, updatedAt: data.updatedAt || null, isLive: data.isLive === true });
+        setProximityInfo({ distanceKm: data.distanceKm, isNearby: data.isNearby === true,
+          isImmediate: data.isImmediate === true, etaMins: data.etaMins });
+        if (data.isLive && data.isNearby && !hasChimed.current) {
+          playProximityChime(); hasChimed.current = true;
         }
-        if (data.isNearby !== undefined) {
-          setProximityInfo({
-            distanceKm: data.distanceKm,
-            isNearby: data.isNearby,
-            isImmediate: data.isImmediate,
-            etaMins: data.etaMins,
-          });
-          if (data.isNearby && !hasChimed) {
-            playProximityChime();
-            setHasChimed(true);
-          }
-        }
-        // Update booking status dynamically from server
         if (data.status) {
-          setBooking((prev: any) =>
-            prev ? { ...prev, status: data.status } : prev
-          );
-          if (TERMINAL_STATUSES.includes(data.status)) {
-            clearInterval(intervalId);
-          }
+          setBooking((prev: any) => prev ? { ...prev, status: data.status } : prev);
+          if (['COMPLETED', 'CANCELLED'].includes(data.status)) clearInterval(interval);
         }
-      } catch {}
+      } catch (error) {
+        if (active) {
+          setTrackingError(error instanceof Error && error.name !== 'AbortError' ? error.message : 'Location updates timed out. Retrying...');
+          setProximityInfo(null);
+        }
+      } finally { clearTimeout(timeout); busy = false; }
     };
-
-    const intervalId = setInterval(poll, 5000);
-    poll(); // immediate first call
-    return () => clearInterval(intervalId);
-  }, [id, hasChimed]);
+    const interval = setInterval(poll, 5000);
+    void poll();
+    return () => { active = false; clearInterval(interval); controller?.abort(); };
+  }, [id]);
 
   const updateBookingStatus = async (newStatus: string) => {
     setUpdatingStatus(newStatus);
@@ -257,9 +260,9 @@ export default function AppointmentDetailPage() {
       </div>
 
       {/* PROXIMITY NOTIFICATION TRIGGER CARD */}
-      {(proximityInfo?.isNearby || b.status === 'ARRIVED' || (proximityInfo?.distanceKm !== null && proximityInfo?.distanceKm !== undefined && proximityInfo.distanceKm <= 3.0)) && (
+      {(proximityInfo?.isNearby || b.status === 'ARRIVED') && (
         <div className={`p-5 rounded-3xl border shadow-xl flex items-center justify-between gap-4 animate-in slide-in-from-top duration-300 ${
-          b.status === 'ARRIVED' || (proximityInfo?.distanceKm !== null && proximityInfo?.distanceKm !== undefined && proximityInfo.distanceKm <= 0.3)
+          b.status === 'ARRIVED'
             ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white border-emerald-400 ring-4 ring-emerald-500/20'
             : 'bg-gradient-to-r from-amber-500 via-teal-600 to-emerald-600 text-white border-amber-300 ring-4 ring-amber-500/20'
         }`}>
@@ -270,7 +273,7 @@ export default function AppointmentDetailPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-extrabold uppercase tracking-wider">
-                  {b.status === 'ARRIVED' || (proximityInfo?.distanceKm !== null && proximityInfo?.distanceKm !== undefined && proximityInfo.distanceKm <= 0.3)
+                  {b.status === 'ARRIVED'
                     ? '🎯 Doctor Has Arrived!'
                     : '🚨 Doctor In Your Range!'}
                 </span>
@@ -281,12 +284,12 @@ export default function AppointmentDetailPage() {
                 )}
               </div>
               <h3 className="text-base font-extrabold text-white">
-                {b.status === 'ARRIVED' || (proximityInfo?.distanceKm !== null && proximityInfo?.distanceKm !== undefined && proximityInfo.distanceKm <= 0.3)
+                {b.status === 'ARRIVED'
                   ? `${b.partner_name || 'Your Clinician'} has arrived outside your home!`
                   : `${b.partner_name || 'Your Clinician'} is currently in your neighborhood / range!`}
               </h3>
               <p className="text-xs text-white/90 font-medium">
-                {b.status === 'ARRIVED' || (proximityInfo?.distanceKm !== null && proximityInfo?.distanceKm !== undefined && proximityInfo.distanceKm <= 0.3)
+                {b.status === 'ARRIVED'
                   ? 'Please open your main entrance door. Your clinician is at your doorstep for the home visit.'
                   : `Doctor is approaching your address (ETA ~${proximityInfo?.etaMins || 2} mins). Please prepare the patient area.`}
               </p>
@@ -401,25 +404,22 @@ export default function AppointmentDetailPage() {
           {/* 1. FREE LIVE MAP & TELEMETRY */}
           {activeTab === 'TELEMETRY' && (
             <div className="space-y-4">
+              {trackingError && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{trackingError} Showing the last known position.</p>}
               {(() => {
-                const destLat = b.patient_lat ? Number(b.patient_lat) : 12.9716;
-                const destLng = b.patient_lng ? Number(b.patient_lng) : 77.5946;
-                // Use live polled GPS first, then fall back to DB stored partner_lat/lng
-                const liveLat = partnerLivePos?.lat ?? (b.partner_lat ? Number(b.partner_lat) : null);
-                const liveLng = partnerLivePos?.lng ?? (b.partner_lng ? Number(b.partner_lng) : null);
-                const initialLat = liveLat ?? (destLat - 0.02);
-                const initialLng = liveLng ?? (destLng - 0.02);
-
+                const patient = trackingData ? coordinates(trackingData.patientLat, trackingData.patientLng) : coordinates(b.patient_lat, b.patient_lng);
+                const doctor = trackingData ? coordinates(trackingData.lat, trackingData.lng) : coordinates(b.partner_lat, b.partner_lng);
                 return (
                   <LiveTelemetryMap
                     clinicianName={b.partner_name || 'Assigned Clinician'}
                     clinicianRole={b.partner_title || 'Attending Physician'}
                     patientAddress={b.address_text}
-                    initialLat={initialLat}
-                    initialLng={initialLng}
-                    destLat={destLat}
-                    destLng={destLng}
+                    initialLat={doctor?.lat}
+                    initialLng={doctor?.lng}
+                    destLat={patient?.lat}
+                    destLng={patient?.lng}
                     status={b.status}
+                    updatedAt={trackingData?.updatedAt || b.partner_location_updated_at}
+                    live={Boolean(trackingData?.isLive && !trackingError)}
                   />
                 );
               })()}

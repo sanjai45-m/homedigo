@@ -16,15 +16,13 @@ export async function GET(
 
   if (isDbConfigured) {
     const res = await executeQuery(
-      `SELECT b.*, 
-              COALESCE(b.partner_lat, p.latitude) AS partner_lat, 
-              COALESCE(b.partner_lng, p.longitude) AS partner_lng,
-              COALESCE(b.patient_lat, a.lat) AS patient_lat, 
-              COALESCE(b.patient_lng, a.lng) AS patient_lng, 
+      `SELECT b.*,
+              CASE WHEN b.patient_lat BETWEEN -90 AND 90 AND b.patient_lng BETWEEN -180 AND 180 THEN b.patient_lat ELSE a.lat END AS patient_lat,
+              CASE WHEN b.patient_lat BETWEEN -90 AND 90 AND b.patient_lng BETWEEN -180 AND 180 THEN b.patient_lng ELSE a.lng END AS patient_lng,
               a.city AS address_city,
               p.location_name AS partner_location
        FROM bookings b
-       LEFT JOIN addresses a ON b.address_id = a.id
+       LEFT JOIN addresses a ON b.address_id = a.id AND a.user_id = b.user_id
        LEFT JOIN partner_profiles p ON b.partner_id = p.user_id
        WHERE (b.id = $1 OR b.booking_number = $1) AND b.user_id = $2`,
       [id, userId]

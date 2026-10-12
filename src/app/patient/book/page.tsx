@@ -1264,10 +1264,11 @@ function BookServiceContent() {
                   1. Auto-Detect / Search Locality (GPS)
                 </span>
                 <LocationPicker
+                  onLocationClear={() => { setNewLat(null); setNewLng(null); }}
                   initialLocationName={newAddressLine2 || newAddressLine1}
                   initialCity={newCity}
-                  initialLat={newLat || undefined}
-                  initialLng={newLng || undefined}
+                  initialLat={newLat ?? undefined}
+                  initialLng={newLng ?? undefined}
                   onLocationSelect={(loc: { locationName: string; city: string; lat: number; lng: number; fullAddress?: string }) => {
                     setNewAddressLine2(loc.locationName);
                     setNewCity(loc.city || '');

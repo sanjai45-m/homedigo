@@ -17,10 +17,11 @@ export async function GET(
     await ensureAppointmentSchema();
     const { id } = await params;
     const result = await executeQuery(
-      `SELECT b.*, u.email AS patient_email, u.phone AS patient_phone,
+      `SELECT b.*, CASE WHEN b.patient_lat BETWEEN -90 AND 90 AND b.patient_lng BETWEEN -180 AND 180 THEN b.patient_lat ELSE a.lat END AS patient_lat, CASE WHEN b.patient_lat BETWEEN -90 AND 90 AND b.patient_lng BETWEEN -180 AND 180 THEN b.patient_lng ELSE a.lng END AS patient_lng, u.email AS patient_email, u.phone AS patient_phone,
         p.age AS patient_age, p.gender AS patient_gender, p.blood_group, p.medical_notes,
         EXISTS (SELECT 1 FROM payment_receipts r WHERE r.booking_id = b.id) AS has_receipt
-       FROM bookings b LEFT JOIN users u ON u.id = b.user_id
+       FROM bookings b LEFT JOIN addresses a ON a.id = b.address_id AND a.user_id = b.user_id
+       LEFT JOIN users u ON u.id = b.user_id
        LEFT JOIN patient_profiles p ON p.id = b.patient_profile_id AND p.user_id = b.user_id
        WHERE b.id = $1 AND b.partner_id = $2`, [id, user.id]);
     if (!result.isConnected) throw new Error('Storage unavailable');

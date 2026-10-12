@@ -60,6 +60,10 @@ export async function PUT(request: Request) {
                            ELSE COALESCE($1, status) END,
              doctor_confirmed_at = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL
                                         ELSE doctor_confirmed_at END,
+             partner_lat = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL ELSE partner_lat END,
+             partner_lng = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL ELSE partner_lng END,
+             partner_location_updated_at = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL ELSE partner_location_updated_at END,
+             partner_location_accuracy = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL ELSE partner_location_accuracy END,
              partner_id = COALESCE($2, partner_id),
              partner_name = COALESCE($3, partner_name),
              partner_title = COALESCE($4, partner_title)

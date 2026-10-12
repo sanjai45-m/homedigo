@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useDoctorTracking } from '@/components/shared/useDoctorTracking';
+import { coordinates } from '@/lib/tracking';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import PaymentReview from '@/components/PaymentReview';
@@ -47,17 +49,12 @@ export default function PartnerVisitCockpitPage() {
   const [prescriptionNotes, setPrescriptionNotes] = useState('');
   const [status, setStatus] = useState('ON_THE_WAY');
 
-  // GPS tracking
-  const [isTracking, setIsTracking] = useState(false);
-  const [gpsError, setGpsError] = useState<string | null>(null);
-  const [currentGps, setCurrentGps] = useState<{ lat: number; lng: number } | null>(null);
-  const [proximityData, setProximityData] = useState<{
-    distanceKm: number | null;
-    isNearby: boolean;
-    isImmediate: boolean;
-  } | null>(null);
-  const watchIdRef = useRef<number | null>(null);
-  const lastSentRef = useRef<number>(0);
+  const [proximityData, setProximityData] = useState<{ distanceKm: number | null; isNearby: boolean; isImmediate: boolean } | null>(null);
+  const { isTracking, gpsError, currentGps, startJourney, stopJourney } = useDoctorTracking(visitId, status, data => {
+    setStatus(current => ['COMPLETED', 'CANCELLED', 'IN_PROGRESS'].includes(current) ? current : data.status);
+    setProximityData(data);
+    setVisit((current: any) => current ? { ...current, patient_lat: data.patientLat, patient_lng: data.patientLng } : current);
+  });
 
   const fetchVisit = async () => {
     try {
@@ -103,86 +100,19 @@ export default function PartnerVisitCockpitPage() {
         }),
       });
       const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'Status could not be updated.');
       if (data.success) {
         setStatus(newStatus);
         setFeedback(`Status updated to: ${newStatus}`);
       }
     } catch (e) {
-      console.error(e);
+      setFeedback(e instanceof Error ? e.message : 'The update failed. Please retry.');
     } finally {
       setSaving(false);
     }
   };
 
   // ── GPS Journey Tracking ──────────────────────────────────────────
-  const pushLocation = async (lat: number, lng: number) => {
-    const now = Date.now();
-    // Throttle to once every 5 seconds
-    if (now - lastSentRef.current < 5000) return;
-    lastSentRef.current = now;
-    try {
-      const res = await fetch(`/api/pro/visits/${visitId}/location`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ lat, lng }),
-      });
-      const data = await res.json();
-      setCurrentGps({ lat, lng });
-      if (data.isNearby !== undefined) {
-        setProximityData({
-          distanceKm: data.distanceKm,
-          isNearby: data.isNearby,
-          isImmediate: data.isImmediate,
-        });
-        if (data.status && data.status !== status) {
-          setStatus(data.status);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to push GPS:', e);
-    }
-  };
-
-  const startJourney = () => {
-    setGpsError(null);
-    if (!navigator.geolocation) {
-      setGpsError('GPS is not supported on this browser/device.');
-      return;
-    }
-    const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        pushLocation(pos.coords.latitude, pos.coords.longitude);
-      },
-      (err) => {
-        setGpsError(`GPS Error: ${err.message}`);
-        setIsTracking(false);
-      },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-    );
-    watchIdRef.current = id;
-    setIsTracking(true);
-    // Immediately transition to ON_THE_WAY
-    updateVisitStatus('ON_THE_WAY');
-  };
-
-  const stopJourney = () => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    setIsTracking(false);
-  };
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
-      }
-    };
-  }, []);
-  // ─────────────────────────────────────────────────────────────────
-
   const handleSaveVitalsAndComplete = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -284,18 +214,18 @@ export default function PartnerVisitCockpitPage() {
           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
             <Radio className={`w-4 h-4 ${isTracking ? 'text-teal-600 animate-pulse' : 'text-slate-400'}`} />
             <span>GPS Live Journey Tracking</span>
-            {isTracking && (
+            {isTracking && currentGps && !gpsError && (
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-600 text-white animate-pulse">
-                STREAMING LIVE
+                GPS SHARED
               </span>
             )}
           </div>
           <p className="text-xs text-slate-500">
             {isTracking
-              ? `Broadcasting your location. Patient can see you moving in real-time. GPS: ${currentGps ? `${currentGps.lat.toFixed(5)}, ${currentGps.lng.toFixed(5)}` : 'acquiring...'}`
+              ? (gpsError ? 'Location sharing is interrupted. The patient sees the last saved position.' : currentGps ? `GPS: ${currentGps.lat.toFixed(5)}, ${currentGps.lng.toFixed(5)}. Keep this page open while travelling.` : 'Acquiring GPS and waiting for the first successful upload...')
               : 'Tap "Start Journey" to stream your live GPS to the patient as you travel.'}
           </p>
-          {proximityData?.isNearby && (
+          {isTracking && !gpsError && proximityData?.isNearby && (
             <div className="mt-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 text-xs font-bold flex items-center gap-2 animate-pulse">
               <Navigation className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
@@ -317,7 +247,7 @@ export default function PartnerVisitCockpitPage() {
             <button
               type="button"
               onClick={startJourney}
-              disabled={status === 'COMPLETED'}
+              disabled={!['CONFIRMED', 'ON_THE_WAY', 'ARRIVED'].includes(status)}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/20 transition-all disabled:opacity-50"
             >
               <Navigation className="w-4 h-4" />
@@ -326,11 +256,11 @@ export default function PartnerVisitCockpitPage() {
           ) : (
             <button
               type="button"
-              onClick={() => { stopJourney(); updateVisitStatus('ARRIVED'); }}
+              onClick={stopJourney}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all"
             >
               <StopCircle className="w-4 h-4" />
-              Stop GPS — I've Arrived
+              Stop sharing GPS
             </button>
           )}
         </div>
@@ -340,14 +270,19 @@ export default function PartnerVisitCockpitPage() {
       <div className="space-y-3">
         <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           <Navigation className="w-4 h-4 text-teal-600" />
-          <span>Live GPS Navigation Route (OpenStreetMap Telemetry)</span>
+          <span>Visit map</span>
         </h3>
         <LiveTelemetryMap
           clinicianName={visit.partner_name ? `${visit.partner_name} (You)` : 'You (Attending Clinician)'}
           clinicianRole={visit.partner_title || 'Attending Clinician'}
           patientAddress={visit.address_text}
           status={status}
-          onArrived={() => updateVisitStatus('ARRIVED')}
+          initialLat={currentGps?.lat ?? coordinates(visit.partner_lat, visit.partner_lng)?.lat}
+          initialLng={currentGps?.lng ?? coordinates(visit.partner_lat, visit.partner_lng)?.lng}
+          destLat={coordinates(visit.patient_lat, visit.patient_lng)?.lat}
+          destLng={coordinates(visit.patient_lat, visit.patient_lng)?.lng}
+          updatedAt={currentGps?.updatedAt || visit.partner_location_updated_at}
+          live={isTracking && !gpsError && Boolean(currentGps)}
         />
       </div>
 

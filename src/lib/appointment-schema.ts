@@ -11,7 +11,9 @@ export function ensureAppointmentSchema() {
          ADD COLUMN IF NOT EXISTS doctor_confirmed_at TIMESTAMPTZ,
          ADD COLUMN IF NOT EXISTS booking_request_key TEXT,
          ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ,
-         ADD COLUMN IF NOT EXISTS payment_verified_by VARCHAR(64)`,
+         ADD COLUMN IF NOT EXISTS payment_verified_by VARCHAR(64),
+         ADD COLUMN IF NOT EXISTS partner_location_updated_at TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS partner_location_accuracy DOUBLE PRECISION`,
       `CREATE UNIQUE INDEX IF NOT EXISTS bookings_request_key_idx ON bookings (user_id, booking_request_key)`,
       `CREATE TABLE IF NOT EXISTS payment_receipts (
          booking_id VARCHAR(64) PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,

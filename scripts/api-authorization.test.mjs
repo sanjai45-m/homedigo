@@ -78,7 +78,7 @@ before(async () => {
       blood_group TEXT, medical_notes TEXT, emergency_contact TEXT, is_primary BOOLEAN, created_at TIMESTAMPTZ DEFAULT NOW());
     CREATE TABLE addresses (id TEXT PRIMARY KEY, user_id TEXT, label TEXT, address_line1 TEXT, address_line2 TEXT, landmark TEXT,
       city TEXT, pincode TEXT, lat FLOAT, lng FLOAT, is_default BOOLEAN, created_at TIMESTAMPTZ DEFAULT NOW());
-    CREATE TABLE bookings (id TEXT, user_id TEXT, partner_id TEXT, address_id TEXT, partner_lat FLOAT, partner_lng FLOAT,
+    CREATE TABLE bookings (id TEXT PRIMARY KEY, user_id TEXT, partner_id TEXT, address_id TEXT, partner_lat FLOAT, partner_lng FLOAT,
       patient_lat FLOAT, patient_lng FLOAT, status TEXT, booking_number TEXT, service_title TEXT, patient_name TEXT,
       total_amount NUMERIC, payment_status TEXT, payment_ref TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
     CREATE TABLE invoices (id TEXT, booking_id TEXT, user_id TEXT, invoice_number TEXT, service_title TEXT,
@@ -87,7 +87,7 @@ before(async () => {
 });
 beforeEach(async () => {
   session = null; offline = false; queries = [];
-  await db.exec(`TRUNCATE users, partner_profiles, patient_profiles, addresses, bookings, invoices;
+  await db.exec(`TRUNCATE users, partner_profiles, patient_profiles, addresses, bookings, invoices CASCADE;
     INSERT INTO users (id, role) VALUES ('patient', 'PATIENT'), ('other', 'PATIENT'), ('doctor', 'PARTNER'), ('admin', 'ADMIN'), ('root', 'SUPER_ADMIN');
     INSERT INTO partner_profiles (user_id, verification_status) VALUES ('doctor', 'APPROVED');
     INSERT INTO patient_profiles (id, user_id, full_name) VALUES ('mine', 'patient', 'Mine'), ('theirs', 'other', 'Private');

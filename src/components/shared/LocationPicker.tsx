@@ -3,12 +3,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapPin, Navigation, Search, Loader2, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { reverseGeocode, searchLocations } from '@/lib/geo';
+import { coordinates } from '@/lib/tracking';
 
 interface LocationPickerProps {
   initialLocationName?: string;
   initialCity?: string;
   initialLat?: number;
   initialLng?: number;
+  onLocationClear?: () => void;
   onLocationSelect: (location: {
     locationName: string;
     city: string;
@@ -22,9 +24,10 @@ interface LocationPickerProps {
 
 export default function LocationPicker({
   initialLocationName = '',
-  initialCity = 'Bengaluru',
-  initialLat = 12.9716,
-  initialLng = 77.5946,
+  initialCity = '',
+  initialLat,
+  initialLng,
+  onLocationClear,
   onLocationSelect,
   label = 'Operating / Practice Location',
   placeholder = 'Search locality, clinic address, or detect live GPS...',
@@ -34,7 +37,7 @@ export default function LocationPicker({
   const [isSearching, setIsSearching] = useState(false);
   const [isDetectingGPS, setIsDetectingGPS] = useState(false);
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(
-    initialLat && initialLng ? { lat: initialLat, lng: initialLng } : null
+    coordinates(initialLat, initialLng)
   );
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -92,7 +95,7 @@ export default function LocationPicker({
         setStatusMessage('Reverse geocoding address...');
         const geoResult = await reverseGeocode(lat, lng);
 
-        const locName = geoResult.displayName || `Bengaluru (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
+        const locName = geoResult.displayName || `Selected location (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
         setQuery(locName);
         setStatusMessage(null);
         setIsDetectingGPS(false);
@@ -160,6 +163,7 @@ export default function LocationPicker({
           onChange={(e) => {
             setQuery(e.target.value);
             setSelectedCoords(null);
+            onLocationClear?.();
           }}
           placeholder={placeholder}
           className="w-full pl-10 pr-9 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-900 font-medium text-xs focus:outline-none focus:border-teal-600 focus:bg-white transition-all"
@@ -174,6 +178,7 @@ export default function LocationPicker({
               setQuery('');
               setSuggestions([]);
               setSelectedCoords(null);
+              onLocationClear?.();
             }}
             className="p-1 text-slate-400 hover:text-slate-600 absolute right-2.5 top-1/2 -translate-y-1/2"
           >

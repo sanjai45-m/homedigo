@@ -1,4 +1,5 @@
 import { requireApiUser } from '@/lib/api-auth';
+import { coordinates } from '@/lib/tracking';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
@@ -28,8 +29,8 @@ export async function POST(request: Request) {
       landmark = '',
       city = 'Bengaluru',
       pincode,
-      lat = 12.9716,
-      lng = 77.5946,
+      lat = null,
+      lng = null,
       isDefault = false,
     } = body;
 
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Address line and pincode are required' }, { status: 400 });
     }
 
+    if ((lat != null || lng != null) && !coordinates(lat, lng)) return NextResponse.json({ error: 'Select a valid address location.' }, { status: 400 });
     const id = `addr_${Date.now()}`;
 
     if (isDbConfigured) {
@@ -71,11 +73,12 @@ export async function PUT(request: Request) {
       landmark = '',
       city = 'Bengaluru',
       pincode,
-      lat = 12.9716,
-      lng = 77.5946,
+      lat = null,
+      lng = null,
       isDefault = false,
     } = body;
 
+    if ((lat != null || lng != null) && !coordinates(lat, lng)) return NextResponse.json({ error: 'Select a valid address location.' }, { status: 400 });
     if (!id || !addressLine1 || !pincode) {
       return NextResponse.json({ error: 'Address ID, address line and pincode are required' }, { status: 400 });
     }
