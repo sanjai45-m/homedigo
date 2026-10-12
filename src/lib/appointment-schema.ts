@@ -8,7 +8,17 @@ export function ensureAppointmentSchema() {
     const statements = [
       `ALTER TABLE bookings
          ADD COLUMN IF NOT EXISTS appointment_starts_at TIMESTAMPTZ,
-         ADD COLUMN IF NOT EXISTS doctor_confirmed_at TIMESTAMPTZ`,
+         ADD COLUMN IF NOT EXISTS doctor_confirmed_at TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS booking_request_key TEXT,
+         ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ,
+         ADD COLUMN IF NOT EXISTS payment_verified_by VARCHAR(64)`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS bookings_request_key_idx ON bookings (user_id, booking_request_key)`,
+      `CREATE TABLE IF NOT EXISTS payment_receipts (
+         booking_id VARCHAR(64) PRIMARY KEY REFERENCES bookings(id) ON DELETE CASCADE,
+         mime_type TEXT NOT NULL,
+         image_base64 TEXT NOT NULL,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       )`,
       `CREATE TABLE IF NOT EXISTS appointment_emails (
          id BIGSERIAL PRIMARY KEY,
          booking_id VARCHAR(64) NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
@@ -25,6 +35,8 @@ export function ensureAppointmentSchema() {
        )`,
       `CREATE INDEX IF NOT EXISTS appointment_emails_due_idx
          ON appointment_emails (due_at) WHERE sent_at IS NULL`,
+      `ALTER TABLE appointment_emails DROP CONSTRAINT IF EXISTS appointment_emails_kind_check,
+         ADD CONSTRAINT appointment_emails_kind_check CHECK (kind IN ('PATIENT_CONFIRMATION', 'DOCTOR_REMINDER', 'DOCTOR_REVIEW'))`,
     ];
     for (const statement of statements) {
       const result = await executeQuery(statement);

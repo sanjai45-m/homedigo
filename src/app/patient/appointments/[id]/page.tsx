@@ -215,6 +215,11 @@ export default function AppointmentDetailPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-200">
       
+      {b.payment_status === 'UNDER_REVIEW' && <div role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+        <strong>{b.status === 'CANCELLED' ? 'Appointment cancelled.' : 'Receipt submitted — awaiting doctor verification.'}</strong>
+        <p className="mt-1">{b.status === 'CANCELLED' ? 'Contact the clinic about any payment already made.' : 'Your appointment is not confirmed yet. Your doctor will review your payment and patient details. We will email you when the appointment is accepted.'}</p>
+        <a href={`/api/bookings/${encodeURIComponent(b.id)}/receipt`} target="_blank" rel="noreferrer" className="inline-block mt-2 font-bold underline">View submitted receipt</a>
+      </div>}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -494,7 +499,8 @@ export default function AppointmentDetailPage() {
           )}
 
           {/* 3. INVOICE STAGE */}
-          {activeTab === 'INVOICE' && (
+          {activeTab === 'INVOICE' && b.payment_status !== 'PAID' && <p className="rounded-2xl bg-amber-50 p-6 text-sm text-amber-900">An invoice will be available after the doctor verifies your payment and accepts the appointment.</p>}
+          {activeTab === 'INVOICE' && b.payment_status === 'PAID' && (
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-md space-y-6 animate-in fade-in duration-150">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>

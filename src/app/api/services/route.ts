@@ -4,7 +4,7 @@ import { executeQuery, isDbConfigured } from '@/lib/db';
 export async function GET() {
   if (isDbConfigured) {
     const servicesRes = await executeQuery(
-      'SELECT id, title, category, description, base_price, duration_minutes, icon FROM services WHERE is_active = true ORDER BY base_price ASC'
+      'SELECT id, title, category, description, base_price, visiting_fee, duration_minutes, icon FROM services WHERE is_active = true ORDER BY base_price ASC'
     );
     if (servicesRes.isConnected && servicesRes.rows.length > 0) {
       return NextResponse.json({

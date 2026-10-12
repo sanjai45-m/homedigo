@@ -2,44 +2,31 @@ import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-
-  if (isDbConfigured) {
-    const res = await executeQuery(
-      `SELECT * FROM bookings WHERE id = $1`,
-      [id]
-    );
-    if (res.isConnected && res.rows.length > 0) {
-      return NextResponse.json({ visit: res.rows[0] });
-    }
+  const session = await getServerSession(authOptions);
+  const user = session?.user as { id?: string; role?: string } | undefined;
+  if (!user?.id || user.role !== 'PARTNER') return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });
+  try {
+    await ensureAppointmentSchema();
+    const { id } = await params;
+    const result = await executeQuery(
+      `SELECT b.*, u.email AS patient_email, u.phone AS patient_phone,
+        p.age AS patient_age, p.gender AS patient_gender, p.blood_group, p.medical_notes,
+        EXISTS (SELECT 1 FROM payment_receipts r WHERE r.booking_id = b.id) AS has_receipt
+       FROM bookings b LEFT JOIN users u ON u.id = b.user_id
+       LEFT JOIN patient_profiles p ON p.id = b.patient_profile_id AND p.user_id = b.user_id
+       WHERE b.id = $1 AND b.partner_id = $2`, [id, user.id]);
+    if (!result.isConnected) throw new Error('Storage unavailable');
+    if (!result.rows.length) return NextResponse.json({ error: 'Appointment not found.' }, { status: 404 });
+    return NextResponse.json({ visit: result.rows[0] });
+  } catch {
+    return NextResponse.json({ error: 'Appointment unavailable.' }, { status: 503 });
   }
-
-  return NextResponse.json({
-    visit: {
-      id,
-      booking_number: 'HD-8921',
-      patient_name: 'Meenakshi K. (Mother)',
-      patient_phone: '+91 98450 12345',
-      address_text: 'Flat 402, Green Park Apartments, 12th Main, Indiranagar, Bengaluru',
-      service_title: 'Doctor Home Visit',
-      status: 'ON_THE_WAY',
-      total_amount: 550.0,
-      payment_status: 'PAID',
-      clinical_instructions: 'Post-fever clinical review and blood pressure checkup.',
-      scheduled_date: 'Today',
-      scheduled_time_slot: '10:00 AM - 11:00 AM',
-      vital_bp: '120/80',
-      vital_pulse: '76',
-      vital_spo2: '98',
-      vital_sugar: '110',
-      prescription_notes: '',
-    },
-  });
 }
 
 export async function PUT(
@@ -53,6 +40,7 @@ export async function PUT(
     if (!user?.id || user.role !== 'PARTNER') {
       return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });
     }
+    await ensureAppointmentSchema();
     const body = await request.json();
     const { status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes } = body;
     if (status && !['ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(status)) {
@@ -69,6 +57,7 @@ export async function PUT(
              vital_sugar = COALESCE($5, vital_sugar),
              prescription_notes = COALESCE($6, prescription_notes)
          WHERE id = $7 AND partner_id = $8
+           AND (doctor_confirmed_at IS NOT NULL AND payment_status = 'PAID' OR $1 = 'CANCELLED')
          RETURNING *`,
         [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id, user.id]
       );

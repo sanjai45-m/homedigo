@@ -44,7 +44,6 @@ export default function PartnerDashboardPage() {
   const [partner, setPartner] = useState<any>(null);
   const [visits, setVisits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
 
@@ -61,23 +60,6 @@ export default function PartnerDashboardPage() {
       setNotice(e instanceof Error ? e.message : 'Could not load appointments.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const confirmAppointment = async (id: string) => {
-    if (confirmingId) return;
-    setConfirmingId(id);
-    setNotice('');
-    try {
-      const response = await fetch(`/api/pro/visits/${encodeURIComponent(id)}/confirm`, { method: 'POST' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not confirm appointment.');
-      setVisits(current => current.map(visit => visit.id === id ? { ...visit, ...data.visit } : visit));
-      setNotice(data.message);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Could not confirm appointment. Please retry.');
-    } finally {
-      setConfirmingId(null);
     }
   };
 
@@ -330,14 +312,9 @@ export default function PartnerDashboardPage() {
                     </div>
                   </div>
                   {!v.doctor_confirmed_at && ['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(v.status) && (
-                    <button
-                      type="button"
-                      disabled={confirmingId !== null}
-                      onClick={() => confirmAppointment(v.id)}
-                      className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold disabled:opacity-50"
-                    >
-                      {confirmingId === v.id ? 'Confirming...' : 'Confirm Availability'}
-                    </button>
+                    <Link href={`/partner/visit/${v.id}`} className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold">
+                      Review Payment & Accept
+                    </Link>
                   )}
                   {v.doctor_confirmed_at && (
                     <span className="text-xs font-semibold text-teal-700 flex items-center gap-1">

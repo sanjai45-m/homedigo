@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
 /**
@@ -105,6 +108,13 @@ export async function POST(
   const { id } = await params;
 
   try {
+    const session = await getServerSession(authOptions);
+    const user = session?.user as { id?: string; role?: string } | undefined;
+    if (!user?.id || user.role !== 'PARTNER') return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });
+    await ensureAppointmentSchema();
+    const allowed = await executeQuery(`SELECT id FROM bookings WHERE id = $1 AND partner_id = $2
+      AND doctor_confirmed_at IS NOT NULL AND payment_status = 'PAID' AND status IN ('CONFIRMED', 'ON_THE_WAY', 'ARRIVED')`, [id, user.id]);
+    if (!allowed.isConnected || !allowed.rows.length) return NextResponse.json({ error: 'Accept the appointment and verify payment before starting the visit.' }, { status: 409 });
     const body = await request.json();
     const { lat, lng } = body;
 
@@ -160,7 +170,7 @@ export async function POST(
                WHEN status IN ('CONFIRMED', 'ASSIGNED') THEN $3
                ELSE status
              END
-         WHERE id = $4
+         WHERE id = $4 AND status IN ('CONFIRMED', 'ON_THE_WAY', 'ARRIVED')
          RETURNING partner_lat, partner_lng, status`,
         [lat, lng, newStatus, id]
       );

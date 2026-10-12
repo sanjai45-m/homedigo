@@ -155,7 +155,7 @@ export default function AppointmentsListPage() {
                 }`}>
                   <Clock className="w-3.5 h-3.5" />
                   <span>
-                    {b.status === 'PENDING' ? 'Awaiting Doctor Confirmation' : b.status === 'ON_THE_WAY' ? 'Clinician On The Way' : b.status === 'COMPLETED' ? 'Visit Completed' : b.status}
+                    {b.status === 'PENDING' ? 'Awaiting Payment Verification & Doctor Acceptance' : b.status === 'ON_THE_WAY' ? 'Clinician On The Way' : b.status === 'COMPLETED' ? 'Visit Completed' : b.status}
                   </span>
                 </span>
               </div>
@@ -196,7 +196,7 @@ export default function AppointmentsListPage() {
                     href={`/patient/appointments/${b.id}`}
                     className="w-full py-3 px-4 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-teal-700/20 transition-all hover:scale-102"
                   >
-                    <span>{b.status === 'COMPLETED' ? 'View Summary & Rx' : 'Live GPS Tracker'}</span>
+                    <span>{b.status === 'COMPLETED' ? 'View Summary & Rx' : b.payment_status === 'UNDER_REVIEW' ? 'View Request & Receipt' : 'Live GPS Tracker'}</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </Link>
                 </div>

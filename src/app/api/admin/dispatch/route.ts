@@ -64,6 +64,7 @@ export async function PUT(request: Request) {
           const docRes = await executeQuery(`SELECT email, name FROM users WHERE id = $1 LIMIT 1`, [partnerId]);
           if (docRes.isConnected && docRes.rows.length > 0 && docRes.rows[0].email) {
             await sendDoctorAppointmentEmail({
+              bookingId: booking.id,
               doctorEmail: docRes.rows[0].email,
               doctorName: docRes.rows[0].name || partnerName || 'Practitioner',
               patientName: booking.patient_name || 'Patient',

@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
+import PaymentReview from '@/components/PaymentReview';
 import { useParams } from 'next/navigation';
 import {
   HeartPulse,
@@ -63,6 +64,7 @@ export default function PartnerVisitCockpitPage() {
       setLoading(true);
       const res = await fetch(`/api/pro/visits/${visitId}`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not load appointment.');
       if (data.visit) {
         setVisit(data.visit);
         setStatus(data.visit.status || 'ON_THE_WAY');
@@ -73,7 +75,7 @@ export default function PartnerVisitCockpitPage() {
         if (data.visit.prescription_notes) setPrescriptionNotes(data.visit.prescription_notes);
       }
     } catch (e) {
-      console.error(e);
+      setFeedback(e instanceof Error ? e.message : 'Could not load appointment.');
     } finally {
       setLoading(false);
     }
@@ -209,6 +211,8 @@ export default function PartnerVisitCockpitPage() {
     }
   };
 
+  if (!loading && !visit) return <div role="alert" className="p-8 text-red-700">{feedback || 'Appointment not found.'}</div>;
+
   if (loading || !visit) {
     return (
       <div className="p-12 text-center text-slate-500 font-medium">
@@ -217,8 +221,19 @@ export default function PartnerVisitCockpitPage() {
     );
   }
 
+  const review = <PaymentReview visit={visit} onAccepted={updated => { setVisit(updated); setStatus(updated.status); }} />;
+  if (!visit.doctor_confirmed_at || visit.status === 'CANCELLED') return (
+    <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-6">
+      <Link href="/partner/dashboard" className="text-sm text-teal-700 font-bold">Back to appointments</Link>
+      <h1 className="text-2xl font-bold">Appointment request · {visit.booking_number}</h1>
+      <p className="text-slate-600">{visit.service_title} · {visit.scheduled_date} · {visit.scheduled_time_slot} (IST)</p>
+      {review}
+    </div>
+  );
+
   return (
     <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8 animate-fadeIn">
+      {review}
       {/* Back button & Title */}
       <div>
         <Link

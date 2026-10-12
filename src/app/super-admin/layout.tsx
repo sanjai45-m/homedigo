@@ -25,6 +25,7 @@ const superAdminNavItems = [
   { href: '/super-admin/specialities', label: 'Doctor Specialities', icon: Sparkles },
   { href: '/super-admin/partners', label: 'Partner Governance', icon: UserCheck },
   { href: '/super-admin/billing', label: 'Platform Billing & Payouts', icon: CreditCard },
+  { href: '/super-admin/payment-settings', label: 'Payment Settings', icon: CreditCard },
 ];
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {

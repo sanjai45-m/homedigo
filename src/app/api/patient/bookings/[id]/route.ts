@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await getServerSession(authOptions);
+  const userId = (session?.user as { id?: string })?.id;
+  if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
   const { id } = await params;
 
   if (isDbConfigured) {
@@ -19,8 +24,8 @@ export async function GET(
        FROM bookings b
        LEFT JOIN addresses a ON b.address_id = a.id
        LEFT JOIN partner_profiles p ON b.partner_id = p.user_id
-       WHERE b.id = $1 OR b.booking_number = $1`,
-      [id]
+       WHERE (b.id = $1 OR b.booking_number = $1) AND b.user_id = $2`,
+      [id, userId]
     );
     if (res.isConnected && res.rows.length > 0) {
       return NextResponse.json({ booking: res.rows[0] });
@@ -32,41 +37,16 @@ export async function GET(
   });
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params;
-    const body = await request.json();
-    const { status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes } = body;
-    if (status === 'CONFIRMED') {
-      return NextResponse.json({ error: 'Only the assigned doctor can confirm availability.' }, { status: 403 });
-    }
-
-    if (isDbConfigured) {
-      const updateRes = await executeQuery(
-        `UPDATE bookings 
-         SET status = COALESCE($1, status),
-             vital_bp = COALESCE($2, vital_bp),
-             vital_pulse = COALESCE($3, vital_pulse),
-             vital_spo2 = COALESCE($4, vital_spo2),
-             vital_sugar = COALESCE($5, vital_sugar),
-             prescription_notes = COALESCE($6, prescription_notes)
-         WHERE id = $7 OR booking_number = $7
-         RETURNING *`,
-        [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id]
-      );
-      if (updateRes.isConnected && updateRes.rows.length > 0) {
-        return NextResponse.json({ success: true, booking: updateRes.rows[0] });
-      }
-    }
-
-    return NextResponse.json({
-      success: true,
-      booking: { id, status, vital_bp: vitalBp, vital_pulse: vitalPulse, vital_spo2: vitalSpo2, vital_sugar: vitalSugar, prescription_notes: prescriptionNotes },
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to update booking' }, { status: 500 });
-  }
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions);
+  const userId = (session?.user as { id?: string })?.id;
+  if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
+  const { id } = await params;
+  const body = await request.json();
+  if (body.status !== 'CANCELLED') return NextResponse.json({ error: 'Patients can only cancel appointments.' }, { status: 403 });
+  const result = await executeQuery(`UPDATE bookings SET status = 'CANCELLED'
+    WHERE (id = $1 OR booking_number = $1) AND user_id = $2 AND status IN ('PENDING', 'ASSIGNED', 'CONFIRMED') RETURNING *`, [id, userId]);
+  if (!result.isConnected) return NextResponse.json({ error: 'Appointment unavailable.' }, { status: 503 });
+  if (!result.rows.length) return NextResponse.json({ error: 'Appointment cannot be cancelled.' }, { status: 409 });
+  return NextResponse.json({ success: true, booking: result.rows[0] });
 }

@@ -2,8 +2,8 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Appointment confirmation and reminders
 
-Doctors open `/partner/dashboard` from the appointment email and click **Confirm Availability**.
-This saves the confirmation and queues two emails atomically: a patient confirmation sent immediately,
+Doctors open the appointment from their notification email, review the receipt and click
+**Verify Payment & Accept Appointment**. This saves the confirmation and queues two emails atomically: a patient confirmation sent immediately,
 and a doctor reminder due 15 minutes before the slot starts. New bookings remain `PENDING` until the
 assigned doctor confirms. The confirmation email goes to the booking account's email, including
 when that account books for a family member. All appointment times use IST (Asia/Kolkata).
@@ -62,6 +62,47 @@ npm run build
 ```
 
 ## Getting Started
+
+### Payment receipt and doctor acceptance
+
+The final booking step opens Google Pay or PhonePe on supported mobile browsers and
+copies the saved payment number for the patient to paste into the app's phone-number payment screen.
+Super admins can change it under **Super Admin → Payment Settings**, along with the
+recipient name and optional linked UPI ID. The initial number is **9361557446**.
+Settings are saved in PostgreSQL and used by newly opened payment steps without a redeploy.
+Only authenticated super admins can update them. Changing the number in the form clears
+the old UPI ID; enter the new recipient's linked ID if needed. If settings cannot be
+loaded, checkout disables app launching rather than falling back to an old number.
+On desktop or if app launch is unavailable, the page shows manual payment instructions.
+A phone number is not a UPI virtual payment address: recipient/amount prefill requires
+the actual linked UPI ID. The optional server environment variables `UPI_PAYEE_ID` and
+`UPI_PAYEE_NAME` supply defaults only until settings are first saved in the portal;
+saved settings take precedence, including a deliberately blank UPI ID.
+
+After paying, the patient uploads a PNG, JPEG or WebP screenshot (maximum 2 MB).
+The request, private database receipt and doctor notification queue entry are stored
+atomically. No payment is automatically marked paid and no invoice is issued at upload.
+Submission retries reuse the request key to prevent duplicate requests. The checkout
+draft survives returning from the payment app in the same browser tab; after a reload,
+the patient must select the screenshot again.
+
+The assigned doctor's email links directly to the appointment. Sign-in preserves
+that destination. The doctor reviews patient details and the receipt, confirms payment
+was received, and accepts (or declines) the request. Acceptance atomically records the
+verifying doctor/time, marks payment paid, creates the invoice and queues the patient's
+confirmation email. Legacy already-paid appointments retain their confirmation flow.
+Receipts are served only to the owning patient or assigned doctor with private/no-store
+headers. Opening a UPI app or uploading a screenshot is never treated as proof of payment.
+
+Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and the public app URL as
+described above. The existing authenticated minute-level appointment cron also retries
+failed doctor-review emails. Schema additions run automatically; the database role
+needs permission to alter bookings/email constraints and create `payment_receipts` and `payment_settings`.
+Receipt data is stored in PostgreSQL; include it in normal private data retention and backups.
+
+Verify with `node --test scripts/email.test.mjs scripts/appointments.test.mjs` and
+`npm run build`. Real mobile app launching and actual email inbox delivery require a
+configured deployment and device checks; isolated tests use no real payments or emails.
 
 First, run the development server:
 

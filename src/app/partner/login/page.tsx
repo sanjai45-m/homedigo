@@ -42,12 +42,17 @@ export default function PartnerLoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  const returnToAppointment = () => {
+    const target = new URLSearchParams(window.location.search).get('callbackUrl');
+    return target && /^\/partner\/visit\/[a-zA-Z0-9_-]+$/.test(target) ? target : '/partner/dashboard';
+  };
+
   // If already logged in as PARTNER, go to dashboard
   useEffect(() => {
     if (status === 'authenticated') {
       const role = (session?.user as any)?.role;
       if (role === 'PARTNER') {
-        router.replace('/partner/dashboard');
+        router.replace(returnToAppointment());
       }
     }
   }, [status, session, router]);
@@ -69,7 +74,7 @@ export default function PartnerLoginPage() {
       if (res?.error) {
         setError(res.error);
       } else if (res?.ok) {
-        router.push('/partner/dashboard');
+        router.push(returnToAppointment());
         router.refresh();
       }
     } catch (err: any) {

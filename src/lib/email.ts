@@ -11,6 +11,7 @@ function emailFailure(code: string, error: string): EmailResult {
 }
 
 export interface DoctorNotificationParams {
+  bookingId?: string;
   doctorEmail: string;
   doctorName: string;
   patientName: string;
@@ -39,7 +40,7 @@ export async function sendDoctorAppointmentEmail(params: DoctorNotificationParam
   } = params;
 
   const portalUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://homedigo.vercel.app';
-  const partnerDashboardUrl = `${portalUrl}/partner/dashboard`;
+  const partnerDashboardUrl = `${portalUrl.replace(/\/$/, '')}${params.bookingId ? `/partner/visit/${encodeURIComponent(params.bookingId)}` : '/partner/dashboard'}`;
 
   const htmlContent = `
     <!DOCTYPE html>
@@ -73,31 +74,31 @@ export async function sendDoctorAppointmentEmail(params: DoctorNotificationParam
             <h2>🏥 Patient Appointment Notification</h2>
           </div>
           <div class="content">
-            <p class="greeting">Hello Dr. ${doctorName},</p>
+            <p class="greeting">Hello Dr. ${escapeHtml(doctorName)},</p>
             <p style="font-size: 14px; color: #475569; line-height: 1.5;">
-              A patient has booked a new home consultation visit with you on the HomeDigo Platform. Please check the details below and confirm your availability:
+              A patient has submitted an appointment request and payment receipt. Open the request to review the patient details and screenshot, verify the payment, and accept the appointment. The patient will receive a booking confirmation email after acceptance.
             </p>
             
             <div class="card">
               <div class="row">
                 <span class="label">Booking Reference:</span>
-                <span class="value highlight">${bookingNumber}</span>
+                <span class="value highlight">${escapeHtml(bookingNumber)}</span>
               </div>
               <div class="row">
                 <span class="label">Patient Name:</span>
-                <span class="value">${patientName}</span>
+                <span class="value">${escapeHtml(patientName)}</span>
               </div>
               <div class="row">
                 <span class="label">Clinical Service:</span>
-                <span class="value">${serviceTitle}</span>
+                <span class="value">${escapeHtml(serviceTitle)}</span>
               </div>
               <div class="row">
                 <span class="label">Date & Time Slot:</span>
-                <span class="value">${scheduledDate} (${scheduledTimeSlot})</span>
+                <span class="value">${escapeHtml(scheduledDate)} (${escapeHtml(scheduledTimeSlot)})</span>
               </div>
               <div class="row">
                 <span class="label">Patient Address:</span>
-                <span class="value">${addressText}</span>
+                <span class="value">${escapeHtml(addressText)}</span>
               </div>
               <div class="row">
                 <span class="label">Consultation Fee:</span>
@@ -106,7 +107,7 @@ export async function sendDoctorAppointmentEmail(params: DoctorNotificationParam
             </div>
 
             <div class="btn-container">
-              <a href="${partnerDashboardUrl}" class="btn">View & Confirm Availability →</a>
+              <a href="${escapeHtml(partnerDashboardUrl)}" class="btn">Review Receipt & Accept Appointment</a>
             </div>
           </div>
           <div class="footer">
@@ -119,7 +120,8 @@ export async function sendDoctorAppointmentEmail(params: DoctorNotificationParam
 
   return sendEmail({
     to: doctorEmail,
-    subject: `New Patient Appointment: ${patientName} - ${scheduledDate} (${scheduledTimeSlot})`,
+    subject: `Payment review required: ${patientName} - ${scheduledDate} (${scheduledTimeSlot})`,
+    text: `Review payment for ${bookingNumber}. Patient: ${patientName}. Amount: INR ${totalAmount}. Date: ${scheduledDate}, ${scheduledTimeSlot} (IST). Sign in to view patient details and receipt, then verify payment and accept: ${partnerDashboardUrl}`,
     html: htmlContent,
   });
 }

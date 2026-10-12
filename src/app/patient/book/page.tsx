@@ -37,6 +37,8 @@ import {
 import { calculateDistanceKm, estimateTravelMinutes, reverseGeocode } from '@/lib/geo';
 import LocationPicker from '@/components/shared/LocationPicker';
 import BookingGate from '@/components/auth/BookingGate';
+import PaymentCheckout from '@/components/PaymentCheckout';
+import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 
 export default function BookServicePage() {
   return (
@@ -79,7 +81,34 @@ function BookServiceContent() {
   const [selectedPartnerId, setSelectedPartnerId] = useState(initialDoctorId);
   const [scheduledDate, setScheduledDate] = useState('Today');
   const [scheduledSlot, setScheduledSlot] = useState('10:00 AM - 11:00 AM');
-  const [paymentMethod, setPaymentMethod] = useState<'UPI_INTENT' | 'UPI_QR' | 'CARD'>('UPI_INTENT');
+  const [paymentMethod, setPaymentMethod] = useState<'GPAY' | 'PHONEPE' | 'UPI'>('UPI');
+  const [paymentReceipt, setPaymentReceipt] = useState('');
+  const [paymentRef, setPaymentRef] = useState('');
+  const [requestKey, setRequestKey] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
+  const draftKey = 'homedigo-payment-draft-' + userId;
+  useEffect(() => { setRequestKey(crypto.randomUUID()); }, []);
+  const savePaymentDraft = () => {
+    setCheckoutError('');
+    if (!selectedProfileId || !selectedAddressId || (selectedServiceId === 'srv_doc' && !selectedPartnerId)) {
+      setCheckoutError('Select your patient, address and doctor before paying.');
+      return false;
+    }
+    let date: string;
+    try {
+      date = appointmentDate(scheduledDate);
+      if (Date.parse(appointmentStart(date, scheduledSlot)) <= Date.now()) throw new Error('Past appointment');
+    } catch {
+      setCheckoutError('Please go back and choose a future appointment time before paying.');
+      return false;
+    }
+    setScheduledDate(date);
+    try {
+      sessionStorage.setItem(draftKey, JSON.stringify({ selectedServiceId, selectedProfileId, selectedAddressId,
+        selectedPartnerId, scheduledDate: date, scheduledSlot, clinicalNotes, requestKey, savedAt: Date.now() }));
+    } catch { /* Booking remains in memory if session storage is unavailable. */ }
+    return true;
+  };
 
   // Inline Quick Add Modals
   const [showAddProfileModal, setShowAddProfileModal] = useState(false);
@@ -166,6 +195,15 @@ function BookServiceContent() {
         } else if (availablePartners.length > 0) {
           setSelectedPartnerId(availablePartners[0].id);
         }
+        try {
+          const draft = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
+          if (draft && Date.now() - draft.savedAt < 24 * 60 * 60 * 1000) {
+            setSelectedServiceId(draft.selectedServiceId); setSelectedProfileId(draft.selectedProfileId);
+            setSelectedAddressId(draft.selectedAddressId); setSelectedPartnerId(draft.selectedPartnerId);
+            setScheduledDate(draft.scheduledDate); setScheduledSlot(draft.scheduledSlot);
+            setClinicalNotes(draft.clinicalNotes); setRequestKey(draft.requestKey); setCurrentStep(5);
+          }
+        } catch { /* Ignore an expired or unreadable draft. */ }
       } catch (err) {
         console.error('Error loading booking data:', err);
       } finally {
@@ -291,7 +329,7 @@ function BookServiceContent() {
   const selectedAddress = addresses.find((a) => a.id === selectedAddressId) || addresses[0] || null;
 
   // If Doctor Consultation and doctor has custom consultation fee, use it
-  const baseRate = (selectedService?.id === 'srv_doc' && matchedPartner?.consultation_fee)
+  const baseRate = (selectedService?.id === 'srv_doc' && matchedPartner?.consultation_fee != null)
     ? parseFloat(matchedPartner.consultation_fee)
     : parseFloat(selectedService?.base_price || '500');
 
@@ -301,6 +339,9 @@ function BookServiceContent() {
   const tax = Number((totalAmount - subtotal).toFixed(2));
 
   const handleFinalCheckout = async () => {
+    if (loading) return;
+    setCheckoutError('');
+    if (!paymentReceipt) { setCheckoutError('Upload your successful payment receipt before submitting.'); return; }
     if (!selectedService) {
       alert('Please select a healthcare service first.');
       return;
@@ -321,6 +362,7 @@ function BookServiceContent() {
     setLoading(true);
     try {
       const payload = {
+        paymentReceipt, paymentMethod, paymentRef, requestKey,
         serviceId: selectedService.id,
         serviceTitle: selectedService.title,
         patientProfileId: selectedProfile.id,
@@ -345,9 +387,10 @@ function BookServiceContent() {
 
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Could not create your appointment. Please try again.');
+        setCheckoutError(data.error || 'Could not submit your request. Please retry; do not pay again.');
         return;
       }
+      try { sessionStorage.removeItem(draftKey); } catch {}
       if (data.booking?.id) {
         router.push(`/patient/appointments/${data.booking.id}`);
       } else {
@@ -355,7 +398,7 @@ function BookServiceContent() {
       }
     } catch (err) {
       console.error('Booking checkout error:', err);
-      alert('Could not create your appointment. Please check your connection and try again.');
+      setCheckoutError('Could not submit your request. Check your connection and retry with the same receipt; do not pay again.');
     } finally {
       setLoading(false);
     }
@@ -935,9 +978,9 @@ function BookServiceContent() {
           <div className="space-y-6 animate-in fade-in duration-150">
             <div className="border-b border-slate-100 pb-3">
               <h2 className="text-lg font-bold text-slate-900 font-heading">
-                5. Secure Payment & Instant Confirmation
+                5. Payment & Receipt Upload
               </h2>
-              <p className="text-xs text-slate-500">Instant verification · 100% money-back guarantee</p>
+              <p className="text-xs text-slate-500">Your doctor verifies payment before confirming your appointment.</p>
             </div>
 
             {/* Order Summary Box */}
@@ -977,47 +1020,15 @@ function BookServiceContent() {
               </div>
             </div>
 
-            {/* UPI Payment Methods */}
-            <div className="space-y-3">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Select Payment Mode
-              </span>
+            <PaymentCheckout amount={totalAmount} reference={requestKey} receipt={paymentReceipt}
+              onReceipt={setPaymentReceipt} onMethod={setPaymentMethod} beforeOpen={savePaymentDraft} />
+            <label className="block text-sm font-semibold text-slate-700">
+              UPI transaction ID (optional)
+              <input value={paymentRef} onChange={e => setPaymentRef(e.target.value)} maxLength={64} className="mt-2 block w-full rounded-xl border border-slate-200 p-3" placeholder="Transaction ID from your receipt" />
+            </label>
+            <p className="text-xs text-slate-500">Booking confirmation will be emailed to {userEmail} after the doctor accepts your request.</p>
+            {checkoutError && <p role="alert" className="text-sm text-red-700">{checkoutError}</p>}
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => setPaymentMethod('UPI_INTENT')}
-                  className={`p-3.5 rounded-2xl border-2 font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-                    paymentMethod === 'UPI_INTENT'
-                      ? 'border-teal-700 bg-teal-50 text-teal-900'
-                      : 'border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>UPI Apps (GPay / PhonePe)</span>
-                </button>
-
-                <button
-                  onClick={() => setPaymentMethod('UPI_QR')}
-                  className={`p-3.5 rounded-2xl border-2 font-bold text-xs flex items-center justify-center gap-2 transition-all ${
-                    paymentMethod === 'UPI_QR'
-                      ? 'border-teal-700 bg-teal-50 text-teal-900'
-                      : 'border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Scan UPI QR Code</span>
-                </button>
-              </div>
-
-              {paymentMethod === 'UPI_QR' && (
-                <div className="p-4 rounded-2xl bg-white border border-slate-200 flex flex-col items-center justify-center space-y-2 text-center">
-                  <div className="w-32 h-32 bg-slate-900 text-white rounded-xl flex items-center justify-center font-mono text-[10px]">
-                    [UPI QR CODE ₹{totalAmount}]
-                  </div>
-                  <p className="text-xs font-bold text-slate-700">Scan using any UPI App</p>
-                </div>
-              )}
-            </div>
           </div>
         )}
 
@@ -1046,18 +1057,18 @@ function BookServiceContent() {
           ) : (
             <button
               onClick={handleFinalCheckout}
-              disabled={loading}
+              disabled={loading || !paymentReceipt || !requestKey}
               className="px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-75"
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Confirming with Doctor...</span>
+                  <span>Submitting for Review...</span>
                 </>
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Pay ₹{totalAmount.toFixed(2)} & Book Visit</span>
+                  <span>Submit Receipt & Request Appointment</span>
                 </>
               )}
             </button>

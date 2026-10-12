@@ -38,7 +38,7 @@ function load(path) {
   }).outputText;
   const exports = {};
   vm.runInNewContext(source, {
-    exports, process: { env }, Buffer, URL, Date,
+    exports, process: { env }, Buffer, URL, URLSearchParams, Response, Date,
     console: { log() {}, error() {} },
     require(name) {
       if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`);
@@ -50,6 +50,12 @@ function load(path) {
 
 const time = load('src/lib/appointment-time.ts');
 dependencies['@/lib/appointment-time'] = time;
+const payment = load('src/lib/payment.ts');
+dependencies['./payment'] = dependencies['@/lib/payment'] = payment;
+const paymentSettings = load('src/lib/payment-settings.ts');
+dependencies['@/lib/payment-settings'] = paymentSettings;
+const adminPaymentSettings = load('src/app/api/super-admin/payment-settings/route.ts');
+const publicPaymentSettings = load('src/app/api/patient/payment/route.ts');
 const schema = load('src/lib/appointment-schema.ts');
 dependencies['./appointment-schema'] = dependencies['@/lib/appointment-schema'] = schema;
 const email = load('src/lib/email.ts');
@@ -60,23 +66,35 @@ const confirm = load('src/app/api/pro/visits/[id]/confirm/route.ts').POST;
 const cron = load('src/app/api/cron/appointment-reminders/route.ts').GET;
 const bookings = load('src/app/api/patient/bookings/route.ts');
 const dispatch = load('src/app/api/admin/dispatch/route.ts').PUT;
+const receiptRoute = load('src/app/api/bookings/[id]/receipt/route.ts').GET;
+const doctorVisit = load('src/app/api/pro/visits/[id]/route.ts');
+const patientVisit = load('src/app/api/patient/bookings/[id]/route.ts');
+const screenshot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=';
+const bookingPayload = () => ({ patientProfileId: 'profile', addressId: 'address', serviceId: 'service', partnerId: 'doctor',
+  totalAmount: 100, scheduledDate: '2099-03-01', scheduledTimeSlot: '10:00 AM - 11:00 AM',
+  requestKey: crypto.randomUUID(), paymentMethod: 'GPAY', paymentReceipt: screenshot });
 
 before(async () => {
   await db.exec(`
-    CREATE TABLE users (id VARCHAR(64) PRIMARY KEY, name TEXT, email TEXT, role TEXT);
-    CREATE TABLE addresses (id TEXT PRIMARY KEY, lat FLOAT, lng FLOAT);
+    CREATE TABLE users (id VARCHAR(64) PRIMARY KEY, name TEXT, email TEXT, role TEXT, phone TEXT, image TEXT);
+    CREATE TABLE addresses (id TEXT PRIMARY KEY, user_id TEXT, address_line1 TEXT, address_line2 TEXT, city TEXT, pincode TEXT, lat FLOAT, lng FLOAT);
+    CREATE TABLE patient_profiles (id TEXT PRIMARY KEY, user_id TEXT, full_name TEXT, age INT, gender TEXT, blood_group TEXT, medical_notes TEXT);
+    CREATE TABLE partner_profiles (user_id TEXT, specialization TEXT, consultation_fee NUMERIC, latitude FLOAT, longitude FLOAT, location_name TEXT);
+    CREATE TABLE services (id TEXT PRIMARY KEY, title TEXT, base_price NUMERIC, visiting_fee NUMERIC, is_active BOOLEAN);
     CREATE TABLE bookings (
       id VARCHAR(64) PRIMARY KEY, booking_number TEXT, user_id TEXT, patient_profile_id TEXT,
       patient_name TEXT, address_id TEXT, address_text TEXT, service_id TEXT, service_title TEXT,
       partner_id TEXT, partner_name TEXT, partner_title TEXT, partner_img TEXT,
       scheduled_date TEXT, scheduled_time_slot TEXT, status TEXT, total_amount NUMERIC,
       payment_status TEXT, payment_method TEXT, payment_ref TEXT, clinical_instructions TEXT,
-      patient_lat FLOAT, patient_lng FLOAT, created_at TIMESTAMPTZ DEFAULT NOW()
+      patient_lat FLOAT, patient_lng FLOAT, partner_lat FLOAT, partner_lng FLOAT, vital_bp TEXT, vital_pulse TEXT,
+      vital_spo2 TEXT, vital_sugar TEXT, prescription_notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE invoices (id TEXT, booking_id TEXT, user_id TEXT, invoice_number TEXT,
       service_title TEXT, subtotal NUMERIC, tax_amount NUMERIC, total_paid NUMERIC, payment_ref TEXT);
   `);
   await schema.ensureAppointmentSchema();
+  await paymentSettings.ensurePaymentSettingsSchema();
 });
 
 beforeEach(async () => {
@@ -85,8 +103,14 @@ beforeEach(async () => {
   messages = [];
   session = { user: { id: 'doctor', role: 'PARTNER' } };
   env.CRON_SECRET = 'test-secret';
-  await db.exec(`TRUNCATE appointment_emails, bookings, users, invoices;
-    INSERT INTO users VALUES ('doctor', 'Test Doctor', 'doctor@test.local', 'PARTNER'),
+  delete env.UPI_PAYEE_ID;
+  delete env.UPI_PAYEE_NAME;
+  await db.exec(`TRUNCATE payment_settings, appointment_emails, payment_receipts, bookings, users, invoices, addresses, patient_profiles, partner_profiles, services;
+    INSERT INTO addresses (id, user_id, address_line1, city) VALUES ('address', 'patient', 'Test address', 'Test city');
+    INSERT INTO patient_profiles (id, user_id, full_name) VALUES ('profile', 'patient', 'Test Patient');
+    INSERT INTO services VALUES ('service', 'Home Visit', 90, 10, TRUE);
+    INSERT INTO partner_profiles (user_id, specialization, consultation_fee) VALUES ('doctor', 'General medicine', 100);
+    INSERT INTO users (id, name, email, role) VALUES ('doctor', 'Test Doctor', 'doctor@test.local', 'PARTNER'),
       ('doctor2', 'Second Doctor', 'doctor2@test.local', 'PARTNER'),
       ('patient', 'Test Patient', 'patient@test.local', 'PATIENT');`);
 });
@@ -94,9 +118,9 @@ after(() => db.close());
 
 async function booking(id = 'booking') {
   await db.query(`INSERT INTO bookings (id, booking_number, user_id, patient_name,
-    partner_id, service_title, scheduled_date, scheduled_time_slot, status, total_amount)
+    partner_id, service_title, scheduled_date, scheduled_time_slot, status, total_amount, payment_status)
     VALUES ($1::text, $1::text, 'patient', 'Test Patient', 'doctor', 'Home Visit', '2099-03-01',
-    '10:00 AM - 11:00 AM', 'PENDING', 100)`, [id]);
+    '10:00 AM - 11:00 AM', 'PENDING', 100, 'PAID')`, [id]);
 }
 const confirmBooking = (id = 'booking') => confirm({}, { params: Promise.resolve({ id }) });
 const runCron = (authorization = 'Bearer test-secret') => cron({ headers: new Headers({ authorization }) });
@@ -282,7 +306,7 @@ test('confirmation within 15 minutes still makes the doctor reminder eligible im
 
 test('booking uses the signed-in patient and remains pending with normalized IST time', async () => {
   session = { user: { id: 'patient', role: 'PATIENT' } };
-  const response = await bookings.POST({ json: async () => ({
+  const response = await bookings.POST({ json: async () => ({ ...bookingPayload(),
     userId: 'someone-else', patientName: 'Test Patient', serviceId: 'service', serviceTitle: 'Home Visit',
     totalAmount: 100, scheduledDate: '2099-03-01', scheduledTimeSlot: '10:00 AM - 11:00 AM', partnerId: 'doctor',
   }) });
@@ -295,7 +319,7 @@ test('booking uses the signed-in patient and remains pending with normalized IST
 
 test('new booking rejects past times and does not send to an arbitrary unassigned doctor', async () => {
   session = { user: { id: 'patient', role: 'PATIENT' } };
-  const payload = { totalAmount: 100, serviceTitle: 'Home Visit', scheduledDate: '2020-01-01', scheduledTimeSlot: '10:00 AM - 11:00 AM' };
+  const payload = { ...bookingPayload(), partnerId: null, scheduledDate: '2020-01-01' };
   assert.equal((await bookings.POST({ json: async () => payload })).status, 400);
   payload.scheduledDate = '2099-03-01';
   assert.equal((await bookings.POST({ json: async () => payload })).status, 200);
@@ -309,4 +333,180 @@ test('new email templates escape patient content and include IST and the correct
   assert.match(messages[0].html, /Dr A &amp; B/);
   assert.match(messages[0].text, /\(IST\)/);
   assert.match(messages[0].html, /\/patient\/appointments\/booking/);
+});
+
+test('receipt booking sends only doctor review; acceptance verifies payment, invoices and emails patient once', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const payload = bookingPayload();
+  const created = await bookings.POST({ json: async () => payload });
+  assert.equal(created.status, 200);
+  const id = created.body.booking.id;
+  assert.equal(created.body.booking.payment_status, 'UNDER_REVIEW');
+  assert.equal(created.body.booking.payment_ref, null);
+  assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, 'doctor@test.local');
+  assert.ok(messages[0].html.includes(`/partner/visit/${id}`));
+  assert.match(messages[0].text, /verify payment and accept/);
+  session = { user: { id: 'doctor', role: 'PARTNER' } };
+  const context = { params: Promise.resolve({ id }) };
+  assert.equal((await confirm({ json: async () => ({}) }, context)).status, 400);
+  assert.equal((await doctorVisit.PUT({ json: async () => ({ status: 'ON_THE_WAY' }) }, context)).status, 503);
+  const detail = await doctorVisit.GET({}, context);
+  assert.equal(detail.body.visit.has_receipt, true);
+  assert.equal(detail.body.visit.patient_email, 'patient@test.local');
+  const confirmed = await confirm({ json: async () => ({ paymentVerified: true }) }, context);
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.visit.payment_status, 'PAID');
+  assert.equal(confirmed.body.visit.payment_verified_by, 'doctor');
+  assert.ok(confirmed.body.visit.payment_verified_at);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].to, 'patient@test.local');
+  assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 1);
+  await confirm({ json: async () => ({ paymentVerified: true }) }, context);
+  assert.equal(messages.length, 2);
+  assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 1);
+});
+
+test('receipt and patient details are private to the patient and assigned doctor', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const created = await bookings.POST({ json: async () => bookingPayload() });
+  const context = { params: Promise.resolve({ id: created.body.booking.id }) };
+  const ownReceipt = await receiptRoute({}, context);
+  assert.equal(ownReceipt.status, 200);
+  assert.equal(ownReceipt.headers.get('cache-control'), 'private, no-store');
+  assert.equal(ownReceipt.headers.get('content-type'), 'image/png');
+  assert.equal((await ownReceipt.arrayBuffer()).byteLength, Buffer.from(screenshot.split(',')[1], 'base64').length);
+  for (const user of [undefined, { id: 'doctor2', role: 'PARTNER' }, { id: 'other', role: 'PATIENT' }]) {
+    session = user ? { user } : null;
+    assert.ok([401, 404].includes((await receiptRoute({}, context)).status));
+    assert.ok([401, 404].includes((await doctorVisit.GET({}, context)).status));
+    const patientResult = await patientVisit.GET({}, context);
+    assert.ok(patientResult.status === 401 || patientResult.body.booking === null);
+  }
+  session = { user: { id: 'doctor', role: 'PARTNER' } };
+  assert.equal((await receiptRoute({}, context)).status, 200);
+});
+
+test('rejects missing, disguised and oversized receipts, incorrect totals and other patients profiles', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  for (const override of [{ paymentReceipt: null }, { paymentReceipt: 'data:image/svg+xml;base64,PHN2Zz4=' },
+    { paymentReceipt: 'data:image/png;base64,' + Buffer.from('<html>not a screenshot</html>').toString('base64') },
+    { paymentReceipt: 'data:image/png;base64,' + 'A'.repeat(3 * 1024 * 1024) },
+    { totalAmount: 1 }, { patientProfileId: 'someone-else' }, { addressId: 'someone-else' }, { partnerId: 'patient' }]) {
+    const response = await bookings.POST({ json: async () => ({ ...bookingPayload(), ...override }) });
+    assert.ok([400, 409].includes(response.status));
+  }
+  assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 0);
+  assert.equal(messages.length, 0);
+});
+
+test('concurrent submission retries create one booking, receipt and doctor review email', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const payload = bookingPayload();
+  const responses = await Promise.all([bookings.POST({ json: async () => payload }), bookings.POST({ json: async () => payload })]);
+  assert.ok(responses.every(r => r.status === 200));
+  assert.equal(responses[0].body.booking.id, responses[1].body.booking.id);
+  assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 1);
+  assert.equal((await db.query('SELECT * FROM payment_receipts')).rows.length, 1);
+  assert.equal(messages.length, 1);
+});
+
+test('doctor review email retries after SMTP failure without confirming payment', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  smtpFails = true;
+  const response = await bookings.POST({ json: async () => bookingPayload() });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.booking.payment_status, 'UNDER_REVIEW');
+  const job = (await db.query("SELECT * FROM appointment_emails WHERE kind = 'DOCTOR_REVIEW'")).rows[0];
+  assert.equal(job.last_error, 'ETIMEDOUT');
+  smtpFails = false;
+  await db.exec("UPDATE appointment_emails SET due_at = NOW() - INTERVAL '1 second'");
+  assert.equal((await runCron()).body.sent, 1);
+  assert.equal(messages[0].to, 'doctor@test.local');
+  assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
+});
+
+test('receipt storage failure rolls back booking and doctor notification together', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  await db.exec(`CREATE FUNCTION reject_receipt() RETURNS trigger LANGUAGE plpgsql AS
+    'BEGIN RAISE EXCEPTION ''Test receipt failure''; END';
+    CREATE TRIGGER reject_receipt BEFORE INSERT ON payment_receipts FOR EACH ROW EXECUTE FUNCTION reject_receipt()`);
+  try {
+    assert.equal((await bookings.POST({ json: async () => bookingPayload() })).status, 503);
+    assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 0);
+    assert.equal((await db.query('SELECT * FROM appointment_emails')).rows.length, 0);
+    assert.equal(messages.length, 0);
+  } finally { await db.exec('DROP TRIGGER reject_receipt ON payment_receipts; DROP FUNCTION reject_receipt()'); }
+});
+
+test('declined requests cannot be accepted and cannot send booking confirmation', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const created = await bookings.POST({ json: async () => bookingPayload() });
+  const context = { params: Promise.resolve({ id: created.body.booking.id }) };
+  assert.equal((await patientVisit.PATCH({ json: async () => ({ status: 'COMPLETED' }) }, context)).status, 403);
+  session = { user: { id: 'doctor', role: 'PARTNER' } };
+  assert.equal((await doctorVisit.PUT({ json: async () => ({ status: 'CANCELLED' }) }, context)).status, 200);
+  assert.equal((await confirm({ json: async () => ({ paymentVerified: true }) }, context)).status, 409);
+  assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
+  assert.equal(messages.length, 1);
+});
+
+test('UPI links require an explicit UPI ID, encode payment details and target the chosen Android app', () => {
+  assert.equal(payment.upiPaymentLink('GPAY', '9361557446', 'HomeDigo', 100, 'test'), '');
+  assert.match(payment.upiPaymentLink('GPAY', 'clinic@bank', 'HomeDigo', 100, 'test', true), /package=com.google.android.apps.nbu.paisa.user/);
+  assert.match(payment.upiPaymentLink('PHONEPE', 'clinic@bank', 'HomeDigo', 100, 'test', true), /package=com.phonepe.app/);
+  const link = new URL(payment.upiPaymentLink('UPI', 'clinic@bank', 'A & B', 123.45, 'test'));
+  assert.equal(link.searchParams.get('pa'), 'clinic@bank');
+  assert.equal(link.searchParams.get('pn'), 'A & B');
+  assert.equal(link.searchParams.get('am'), '123.45');
+  assert.equal(payment.paymentConfig().phone, '9361557446');
+});
+
+test('only super admins can read management settings or change the payment recipient', async () => {
+  const settings = { phone: '9876543210', upiId: '', payeeName: 'Clinic' };
+  for (const user of [undefined, { id: 'patient', role: 'PATIENT' }, { id: 'doctor', role: 'PARTNER' }, { id: 'admin', role: 'ADMIN' }]) {
+    session = user ? { user } : null;
+    assert.equal((await adminPaymentSettings.GET()).status, 403);
+    assert.equal((await adminPaymentSettings.PUT({ json: async () => settings })).status, 403);
+  }
+  assert.equal((await publicPaymentSettings.GET()).body.phone, '9361557446');
+  assert.equal((await db.query('SELECT * FROM payment_settings')).rows.length, 0);
+});
+
+test('saved payment number persists and replaces checkout defaults, including clearing a former UPI ID', async () => {
+  env.UPI_PAYEE_ID = 'original@bank';
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  const saved = await adminPaymentSettings.PUT({ json: async () => ({ phone: '+91 98765 43210', upiId: '', payeeName: 'New Clinic' }) });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.settings.phone, '9876543210');
+  assert.equal((await adminPaymentSettings.GET()).body.settings.phone, '9876543210');
+  const publicSettings = await publicPaymentSettings.GET();
+  assert.equal(publicSettings.body.phone, '9876543210');
+  assert.equal(publicSettings.body.upiId, '');
+  assert.equal(publicSettings.body.payeeName, 'New Clinic');
+  assert.equal(publicSettings.body.updated_by, undefined);
+  const stored = (await db.query('SELECT * FROM payment_settings')).rows[0];
+  assert.equal(stored.updated_by, 'super');
+  assert.ok(stored.updated_at);
+  await adminPaymentSettings.PUT({ json: async () => ({ phone: '9123456789', upiId: 'new@bank', payeeName: 'Another Clinic' }) });
+  assert.equal((await publicPaymentSettings.GET()).body.phone, '9123456789');
+  assert.equal((await publicPaymentSettings.GET()).body.upiId, 'new@bank');
+  assert.equal((await db.query('SELECT * FROM payment_settings')).rows.length, 1);
+});
+
+test('payment settings reject invalid recipients and never fall back to old details on database failure', async () => {
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  const settings = { phone: '9876543210', upiId: '', payeeName: 'Clinic' };
+  for (const override of [{ phone: '' }, { phone: '123' }, { phone: '1234567890' }, { phone: 9876543210 },
+    { phone: '98765432101' }, { upiId: 'not-a-upi-id' }, { payeeName: '' }]) {
+    assert.equal((await adminPaymentSettings.PUT({ json: async () => ({ ...settings, ...override }) })).status, 400);
+  }
+  assert.equal((await db.query('SELECT * FROM payment_settings')).rows.length, 0);
+  databaseFails = true;
+  assert.equal((await adminPaymentSettings.PUT({ json: async () => settings })).status, 503);
+  assert.equal((await adminPaymentSettings.GET()).status, 503);
+  const publicSettings = await publicPaymentSettings.GET();
+  assert.equal(publicSettings.status, 503);
+  assert.equal(publicSettings.body.phone, undefined);
 });

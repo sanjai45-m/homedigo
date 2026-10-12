@@ -1,10 +1,12 @@
+import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
-import { sendDoctorAppointmentEmail } from '@/lib/email';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
+import { processAppointmentEmails } from '@/lib/appointment-notifications';
+import { validateReceipt } from '@/lib/payment';
 
 export const maxDuration = 60;
 
@@ -12,160 +14,87 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   const userId = (session?.user as { id?: string } | undefined)?.id;
   if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
-
-  if (isDbConfigured) {
-    const res = await executeQuery(
-      `SELECT id, booking_number, user_id, patient_profile_id, patient_name, address_id, address_text, 
-              service_id, service_title, partner_id, partner_name, partner_title, partner_img, partner_rating,
-              scheduled_date, scheduled_time_slot, status, total_amount, payment_status, payment_method, payment_ref, 
-              clinical_instructions, vital_bp, vital_pulse, vital_spo2, vital_sugar, prescription_notes, created_at
-       FROM bookings 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC`,
-      [userId]
-    );
-    if (res.isConnected) {
-      return NextResponse.json({ bookings: res.rows || [] });
-    }
-  }
-
-  return NextResponse.json({ bookings: [] });
+  const result = await executeQuery(`SELECT * FROM bookings WHERE user_id = $1 ORDER BY created_at DESC`, [userId]);
+  return NextResponse.json({ bookings: result.rows });
 }
 
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const userId = (session?.user as { id?: string } | undefined)?.id;
-    if (!userId) return NextResponse.json({ error: 'Please sign in to book an appointment.' }, { status: 401 });
+    const user = session?.user as { id?: string; role?: string } | undefined;
+    if (!user?.id || user.role !== 'PATIENT') return NextResponse.json({ error: 'Please sign in as a patient.' }, { status: 401 });
     if (!isDbConfigured) return NextResponse.json({ error: 'Booking storage is unavailable.' }, { status: 503 });
+    if (Number(request.headers?.get('content-length') || 0) > 3 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Upload a screenshot up to 2 MB.' }, { status: 413 });
+    }
     const body = await request.json();
-    const {
-      patientProfileId = 'prof_001',
-      patientName = 'Sanju K.',
-      addressId = 'addr_001',
-      addressText,
-      serviceId,
-      serviceTitle,
-      totalAmount,
-      scheduledDate = 'Today',
-      scheduledTimeSlot = '10:00 AM - 11:00 AM',
-      clinicalInstructions = '',
-      partnerId,
-      partnerName,
-      partnerTitle,
-      partnerImg,
-    } = body;
-
-    let normalizedDate: string;
-    let startsAt: string;
-    try {
-      const reference = new Date();
-      normalizedDate = appointmentDate(scheduledDate, reference);
-      startsAt = appointmentStart(normalizedDate, scheduledTimeSlot, reference);
-      if (Date.parse(startsAt) <= reference.getTime()) throw new Error('Please choose a future appointment time.');
-    } catch (error) {
-      return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid appointment date or time.' }, { status: 400 });
+    const { patientProfileId, addressId, serviceId, partnerId, scheduledDate, scheduledTimeSlot, requestKey, paymentMethod } = body;
+    if (![patientProfileId, addressId, serviceId, requestKey].every(v => typeof v === 'string' && v.length > 0 && v.length <= 64)
+      || !['GPAY', 'PHONEPE', 'UPI'].includes(paymentMethod)) {
+      return NextResponse.json({ error: 'Select a patient, address, service and payment app.' }, { status: 400 });
     }
     await ensureAppointmentSchema();
-
-    const bookingId = `bk_${Date.now()}`;
-    const bookingNumber = `HD-${Math.floor(1000 + Math.random() * 9000)}`;
-    const paymentRef = `UPI/2026/${Math.floor(100000000 + Math.random() * 900000000)}`;
-
-    if (isDbConfigured) {
-      let pLat = null;
-      let pLng = null;
-      if (addressId) {
-        const addrRes = await executeQuery(`SELECT lat, lng FROM addresses WHERE id = $1`, [addressId]);
-        if (addrRes.isConnected && addrRes.rows.length > 0) {
-          pLat = addrRes.rows[0].lat;
-          pLng = addrRes.rows[0].lng;
-        }
-      }
-
-      const insertRes = await executeQuery(
-        `INSERT INTO bookings (
-          id, booking_number, user_id, patient_profile_id, patient_name, address_id, address_text,
-          service_id, service_title, partner_id, partner_name, partner_title, partner_img,
-          scheduled_date, scheduled_time_slot, status, total_amount, payment_status, payment_method, payment_ref, clinical_instructions,
-          patient_lat, patient_lng, appointment_starts_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
-        RETURNING *`,
-        [
-          bookingId,
-          bookingNumber,
-          userId,
-          patientProfileId,
-          patientName,
-          addressId,
-          addressText || '123 Green Park, Bengaluru',
-          serviceId,
-          serviceTitle,
-          partnerId || null,
-          partnerName || null,
-          partnerTitle || null,
-          partnerImg || null,
-          normalizedDate,
-          scheduledTimeSlot,
-          'PENDING',
-          totalAmount,
-          'PAID',
-          'UPI',
-          paymentRef,
-          clinicalInstructions,
-          pLat,
-          pLng,
-          startsAt,
-        ]
-      );
-
-      if (!insertRes.isConnected || !insertRes.rows.length) {
-        return NextResponse.json({ error: 'Could not save your appointment. Please try again.' }, { status: 503 });
-      }
-
-      // Also create invoice
-      const subtotal = (totalAmount / 1.18).toFixed(2);
-      const tax = (totalAmount - parseFloat(subtotal)).toFixed(2);
-      await executeQuery(
-        `INSERT INTO invoices (id, booking_id, user_id, invoice_number, service_title, subtotal, tax_amount, total_paid, payment_ref)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [`inv_${Date.now()}`, bookingId, userId, `INV-2026-${bookingNumber.replace('HD-', '')}`, serviceTitle, subtotal, tax, totalAmount, paymentRef]
-      );
-
-      // Trigger Email Notification to Doctor
-      let targetDoctorEmail = null;
-      let targetDoctorName = partnerName || 'Practitioner';
-
-      if (partnerId) {
-        const docUserRes = await executeQuery(`SELECT email, name FROM users WHERE id = $1 LIMIT 1`, [partnerId]);
-        if (docUserRes.isConnected && docUserRes.rows.length > 0) {
-          targetDoctorEmail = docUserRes.rows[0].email;
-          if (docUserRes.rows[0].name) targetDoctorName = docUserRes.rows[0].name;
-        }
-      }
-
-      if (targetDoctorEmail) {
-        await sendDoctorAppointmentEmail({
-          doctorEmail: targetDoctorEmail,
-          doctorName: targetDoctorName,
-          patientName,
-          serviceTitle,
-          scheduledDate: normalizedDate,
-          scheduledTimeSlot,
-          addressText: addressText || '123 Green Park, Bengaluru',
-          bookingNumber,
-          totalAmount,
-        }).catch((err) => console.error('Error dispatching doctor email:', err));
-      }
-
-      if (insertRes.isConnected && insertRes.rows.length > 0) {
-        return NextResponse.json({ success: true, booking: insertRes.rows[0] });
-      }
+    const existing = await executeQuery(`SELECT * FROM bookings WHERE user_id = $1 AND booking_request_key = $2`, [user.id, requestKey]);
+    if (!existing.isConnected) throw new Error('Storage unavailable');
+    if (existing.rows.length) return NextResponse.json({ success: true, booking: existing.rows[0] });
+    let receipt;
+    let date: string;
+    let startsAt: string;
+    try {
+      receipt = validateReceipt(body.paymentReceipt);
+      date = appointmentDate(scheduledDate);
+      startsAt = appointmentStart(date, scheduledTimeSlot);
+      if (Date.parse(startsAt) <= Date.now()) throw new Error('Please choose a future appointment time.');
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid payment or appointment details.' }, { status: 400 });
     }
-
-    return NextResponse.json({ error: 'Could not save your appointment.' }, { status: 503 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to create booking' }, { status: 500 });
+    const [profileRes, addressRes, serviceRes, doctorRes] = await Promise.all([
+      executeQuery(`SELECT * FROM patient_profiles WHERE id = $1 AND user_id = $2`, [patientProfileId, user.id]),
+      executeQuery(`SELECT * FROM addresses WHERE id = $1 AND user_id = $2`, [addressId, user.id]),
+      executeQuery(`SELECT * FROM services WHERE id = $1 AND is_active = TRUE`, [serviceId]),
+      executeQuery(`SELECT u.id, u.name, u.email, u.image, p.specialization, p.consultation_fee
+        FROM users u LEFT JOIN partner_profiles p ON p.user_id = u.id WHERE u.id = $1 AND u.role = 'PARTNER'`, [partnerId || null]),
+    ]);
+    if ([profileRes, addressRes, serviceRes, doctorRes].some(r => !r.isConnected)) throw new Error('Storage unavailable');
+    const profile = profileRes.rows[0], address = addressRes.rows[0], service = serviceRes.rows[0], doctor = doctorRes.rows[0];
+    if (!profile || !address || !service || ((serviceId === 'srv_doc' || partnerId) && !doctor?.email)) {
+      return NextResponse.json({ error: 'Please select a valid patient, address, service and available doctor.' }, { status: 400 });
+    }
+    const amount = Number(((serviceId === 'srv_doc' && doctor?.consultation_fee != null ? Number(doctor.consultation_fee) : Number(service.base_price)) + Number(service.visiting_fee || 0)).toFixed(2));
+    if (!Number.isFinite(amount) || amount <= 0 || Math.abs(Number(body.totalAmount) - amount) > 0.01 || !Number.isFinite(Number(body.totalAmount))) {
+      return NextResponse.json({ error: 'The consultation fee has changed. Refresh and check the amount before paying.' }, { status: 409 });
+    }
+    const paymentRef = typeof body.paymentRef === 'string' ? body.paymentRef.trim() : '';
+    if (paymentRef.length > 64) return NextResponse.json({ error: 'Transaction reference must be at most 64 characters.' }, { status: 400 });
+    const id = `bk_${randomUUID()}`;
+    // Receipt, pending request and durable doctor email commit together. Retries reuse the request key.
+    const saved = await executeQuery(
+      `WITH created AS (
+        INSERT INTO bookings (id, booking_number, user_id, patient_profile_id, patient_name, address_id, address_text,
+          service_id, service_title, partner_id, partner_name, partner_title, partner_img,
+          scheduled_date, scheduled_time_slot, status, total_amount, payment_status, payment_method, payment_ref,
+          clinical_instructions, patient_lat, patient_lng, appointment_starts_at, booking_request_key)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'PENDING',$16,'UNDER_REVIEW',$17,$18,$19,$20,$21,$22,$23)
+        ON CONFLICT (user_id, booking_request_key) DO NOTHING RETURNING *
+      ), receipt AS (
+        INSERT INTO payment_receipts (booking_id, mime_type, image_base64) SELECT id, $24, $25 FROM created RETURNING booking_id
+      ), queued AS (
+        INSERT INTO appointment_emails (booking_id, partner_id, confirmed_at, kind, due_at)
+        SELECT id, partner_id, created_at, 'DOCTOR_REVIEW', NOW() FROM created WHERE partner_id IS NOT NULL RETURNING id
+      ) SELECT * FROM created`,
+      [id, `HD-${randomUUID().slice(0, 18).toUpperCase()}`, user.id, profile.id, profile.full_name, address.id,
+        [address.address_line1, address.address_line2, address.city, address.pincode].filter(Boolean).join(', '),
+        service.id, service.title, doctor?.id || null, doctor?.name || null, doctor?.specialization || null, doctor?.image || null,
+        date, scheduledTimeSlot, amount, paymentMethod, paymentRef || null,
+        typeof body.clinicalInstructions === 'string' ? body.clinicalInstructions.slice(0, 5000) : '',
+        address.lat, address.lng, startsAt, requestKey, receipt.mime, receipt.base64],
+    );
+    if (!saved.isConnected) throw new Error('Could not save booking');
+    const booking = saved.rows[0] || (await executeQuery(`SELECT * FROM bookings WHERE user_id = $1 AND booking_request_key = $2`, [user.id, requestKey])).rows[0];
+    if (!booking) throw new Error('Could not save booking');
+    try { await processAppointmentEmails(booking.id); } catch { console.error('[APPOINTMENT EMAIL] Doctor review email queued for retry.'); }
+    return NextResponse.json({ success: true, booking, message: 'Receipt submitted. Your doctor will verify payment before accepting the appointment.' });
+  } catch {
+    return NextResponse.json({ error: 'Could not save your request. Please retry with the same receipt; do not pay again.' }, { status: 503 });
   }
 }

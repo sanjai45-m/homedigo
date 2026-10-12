@@ -38,12 +38,12 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     const isLoginPage = pathname === '/partner/login';
     if (isLoginPage) return;
     if (status === 'unauthenticated') {
-      router.replace('/partner/login');
+      router.replace(`/partner/login?callbackUrl=${encodeURIComponent(pathname)}`);
       return;
     }
     const role = (session?.user as any)?.role;
     if (role && role !== 'PARTNER') {
-      router.replace('/partner/login');
+      router.replace(`/partner/login?callbackUrl=${encodeURIComponent(pathname)}`);
     }
   }, [status, session, pathname, router]);
 
