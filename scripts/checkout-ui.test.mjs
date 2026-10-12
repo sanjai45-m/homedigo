@@ -54,6 +54,108 @@ const button = (tree, label) => all(tree, node => node.type === 'button' && text
 const response = body => ({ ok: true, status: 200, json: async () => body });
 const payment = harness('src/lib/payment.ts').exports;
 
+async function bookingView({ draft = false, empty = false, failed = false } = {}) {
+  const Checkout = () => null;
+  const state = { failed, saveFails: false };
+  const record = { profiles: empty ? [] : [{ id: 'profile', user_id: 'patient', full_name: 'Test Patient' }],
+    addresses: empty ? [] : [{ id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' }],
+    services: [{ id: 'srv_doc', title: 'Home visit', base_price: '500', visiting_fee: '50' }],
+    doctors: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500' }] };
+  const view = harness('src/app/patient/book/page.tsx', {
+    fetch: async (url, options) => {
+      if (options?.method === 'POST') {
+        if (state.saveFails) return { ok: false, status: 503, json: async () => ({ error: 'Storage is unavailable.' }) };
+        return response(url.endsWith('profiles') ? { profile: { id: 'profile', user_id: 'patient', full_name: 'Test Patient' } }
+          : { address: { id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' } });
+      }
+      if (state.failed && url.includes('/api/patient/')) return { ok: false, status: 503, json: async () => ({ error: 'Storage is unavailable.' }) };
+      return response(record);
+    }, document: { getElementById: () => null },
+    sessionStorage: { getItem: () => draft ? JSON.stringify({ savedAt: Date.now(), selectedServiceId: 'srv_doc',
+      selectedProfileId: 'profile', selectedAddressId: 'address', selectedPartnerId: 'doctor',
+      scheduledDate: '2099-03-01', scheduledSlot: '10:00 AM - 11:00 AM', clinicalNotes: '', requestKey: 'test-request' }) : null },
+  }, {
+    'next-auth/react': { useSession: () => ({ status: 'authenticated', data: { user: { id: 'patient', role: 'PATIENT' } } }) },
+    'next/navigation': { useRouter: () => ({ push() {} }), useSearchParams: () => new URLSearchParams() },
+    'lucide-react': new Proxy({}, { get: (_, key) => key }), '@/lib/geo': {},
+    '@/components/shared/LocationPicker': () => null, '@/components/auth/CheckoutSignIn': () => null,
+    '@/components/PaymentCheckout': Checkout, '@/lib/appointment-time': {},
+  }, '\nexport { BookServiceContent };');
+  const render = () => view.render({}, view.exports.BookServiceContent);
+  render(); await view.flush();
+  return { render, view, state, Checkout };
+}
+
+test('signed-in patients cannot skip an empty patient and address step', async () => {
+  const { render } = await bookingView({ empty: true });
+  button(render(), 'Continue').props.onClick();
+  button(render(), 'Continue').props.onClick();
+  const tree = render();
+  assert.match(text(tree), /Select or add your patient profile and visit address before continuing/);
+  assert.ok(button(tree, 'Add First Family Member'));
+  assert.equal(button(tree, 'Submit Receipt'), undefined);
+});
+
+test('restored checkout keeps upload visible and enables submission after missing details are saved', async () => {
+  const { render, Checkout, state } = await bookingView({ draft: true, empty: true });
+  let tree = render();
+  let checkout = all(tree, node => node.type === Checkout)[0];
+  assert.ok(checkout);
+  assert.match(checkout.props.paymentBlockedReason, /patient profile and visit address/);
+  checkout.props.onReceipt('existing-receipt');
+  assert.equal(button(render(), 'Submit Receipt').props.disabled, true);
+  button(render(), 'Add patient profile').props.onClick();
+  all(render(), node => node.type === 'input' && node.props.placeholder === 'E.g., Meenakshi K.')[0].props.onChange({ target: { value: 'Test Patient' } });
+  state.saveFails = true;
+  await all(render(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.match(text(render()), /Storage is unavailable/);
+  state.saveFails = false;
+  await all(render(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.equal(button(render(), 'Submit Receipt').props.disabled, true);
+  button(render(), 'Add visit address').props.onClick();
+  const required = all(render(), node => node.type === 'input' && node.props.required);
+  for (const input of required) input.props.onChange({ target: { value: input.props.placeholder?.includes('Flat') ? 'Test address' : '600001' } });
+  await all(render(), node => node.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  tree = render();
+  checkout = all(tree, node => node.type === Checkout)[0];
+  assert.equal(checkout.props.paymentBlockedReason, '');
+  assert.equal(checkout.props.receipt, 'existing-receipt');
+  assert.equal(button(tree, 'Submit Receipt').props.disabled, false);
+});
+
+test('failed patient detail requests show a retry action and recover saved selections', async () => {
+  const { render, view, state } = await bookingView({ failed: true });
+  assert.match(text(render()), /booking details could not be loaded/);
+  state.failed = false;
+  button(render(), 'Retry loading booking details').props.onClick();
+  render(); await view.flush();
+  for (let step = 1; step < 5; step++) button(render(), 'Continue').props.onClick();
+  assert.ok(button(render(), 'Submit Receipt'));
+  assert.doesNotMatch(text(render()), /booking details could not be loaded/);
+});
+
+test('blocked payment still allows an existing receipt to be uploaded without opening an app', async () => {
+  const location = { href: '' };
+  let receipt = '';
+  const view = harness('src/components/PaymentCheckout.tsx', {
+    window: { location }, navigator: { userAgent: 'Android' },
+    fetch: async () => response({ phone: '9361557446', upiId: payment.DEMO_UPI_ID, payeeName: 'HomeDigo' }),
+    FileReader: class { readAsDataURL() { this.result = 'existing-receipt'; this.onload(); } },
+  }, { '@/lib/payment': payment });
+  const props = { amount: 100, reference: 'test', receipt, beforeOpen: () => true, onMethod() {},
+    onReceipt(value) { receipt = value; }, paymentBlockedReason: 'Add your patient profile.' };
+  view.render(props); await view.flush();
+  const tree = view.render(props);
+  assert.equal(all(tree, n => n.type === 'fieldset')[0].props.disabled, true);
+  button(tree, 'Open Google Pay').props.onClick();
+  assert.equal(location.href, '');
+  const input = all(tree, n => n.type === 'input' && n.props.type === 'file')[0];
+  assert.equal(input.props.disabled, false);
+  input.props.onChange({ target: { files: [{ type: 'image/png', size: 50 }] } });
+  await view.flush();
+  assert.equal(receipt, 'existing-receipt');
+});
+
 test('mobile payment buttons navigate with recipient and amount without clipboard side effects', async () => {
   const location = { href: '' };
   let copies = 0;

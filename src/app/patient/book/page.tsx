@@ -78,6 +78,9 @@ function BookServiceContent() {
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [loading, setLoading] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [detailsError, setDetailsError] = useState('');
+  const [profileError, setProfileError] = useState('');
+  const [addressError, setAddressError] = useState('');
 
   // Dynamic state from backend APIs
   const [services, setServices] = useState<any[]>([]);
@@ -106,7 +109,7 @@ function BookServiceContent() {
   const savePaymentDraft = () => {
     setCheckoutError('');
     if (authRequired) { requestSignIn(); return false; }
-    if (!selectedProfileId || !selectedAddressId || (selectedServiceId === 'srv_doc' && !selectedPartnerId)) {
+    if (isInitialLoading || detailsError || !selectedProfile || !selectedAddress || (selectedServiceId === 'srv_doc' && !matchedPartner)) {
       setCheckoutError('Select your patient, address and doctor before paying.');
       return false;
     }
@@ -163,10 +166,11 @@ function BookServiceContent() {
     async function loadData() {
       try {
         setIsInitialLoading(true);
+        setDetailsError('');
         const [srvRes, profRes, addrRes, partnerRes] = await Promise.all([
           fetch('/api/services'),
-          userId ? fetch(`/api/patient/profiles?userId=${encodeURIComponent(userId)}`) : Promise.resolve({ json: async () => ({ profiles: [] }) }),
-          userId ? fetch(`/api/patient/addresses?userId=${encodeURIComponent(userId)}`) : Promise.resolve({ json: async () => ({ addresses: [] }) }),
+          userId ? fetch('/api/patient/profiles') : Promise.resolve({ ok: true, status: 200, json: async () => ({ profiles: [] }) }),
+          userId ? fetch('/api/patient/addresses') : Promise.resolve({ ok: true, status: 200, json: async () => ({ addresses: [] }) }),
           fetch('/api/doctors'),
         ]);
         const srvData = await srvRes.json();
@@ -174,6 +178,13 @@ function BookServiceContent() {
         const addrData = await addrRes.json();
         const partnerData = await partnerRes.json();
         if (!active) return;
+        if ([profRes, addrRes].some(response => response.status === 401 || response.status === 403)) {
+          setNeedsSignIn(true); setShowSignIn(true);
+          throw new Error('Please sign in as a patient again to load your saved patient details.');
+        }
+        if (![srvRes, profRes, addrRes, partnerRes].every(response => response.ok)) {
+          throw new Error('Your booking details could not be loaded. Retry to load your saved patient profile and address.');
+        }
 
         const loadedServices = srvData.services || [];
         setServices(loadedServices);
@@ -231,7 +242,7 @@ function BookServiceContent() {
         } catch { /* Ignore an expired or unreadable draft. */ }
         restoredDraft.current = true;
       } catch (err) {
-        console.error('Error loading booking data:', err);
+        if (active) setDetailsError(err instanceof Error ? err.message : 'Your booking details could not be loaded. Please retry.');
       } finally {
         if (active) setIsInitialLoading(false);
       }
@@ -257,6 +268,7 @@ function BookServiceContent() {
     if (authRequired) { setShowAddProfileModal(false); requestSignIn(); return; }
     if (!newProfileName) return;
     setSavingProfile(true);
+    setProfileError('');
     try {
       const res = await fetch('/api/patient/profiles', {
         method: 'POST',
@@ -272,7 +284,10 @@ function BookServiceContent() {
         }),
       });
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) { setNeedsSignIn(true); setShowAddProfileModal(false); requestSignIn(); return; }
+      if (!res.ok || !data.profile) throw new Error(data.error || 'Could not save the patient profile. Please retry.');
       if (data.profile) {
+        setCheckoutError('');
         setProfiles((prev) => [data.profile, ...prev]);
         setSelectedProfileId(data.profile.id);
         setShowAddProfileModal(false);
@@ -280,7 +295,7 @@ function BookServiceContent() {
         setNewProfileNotes('');
       }
     } catch (err) {
-      console.error('Failed to create inline profile:', err);
+      setProfileError(err instanceof Error ? err.message : 'Could not save the patient profile. Please retry.');
     } finally {
       setSavingProfile(false);
     }
@@ -291,6 +306,7 @@ function BookServiceContent() {
     if (authRequired) { setShowAddAddressModal(false); requestSignIn(); return; }
     if (!newAddressLine1 || !newPincode) return;
     setSavingAddress(true);
+    setAddressError('');
     try {
       const res = await fetch('/api/patient/addresses', {
         method: 'POST',
@@ -308,7 +324,10 @@ function BookServiceContent() {
         }),
       });
       const data = await res.json();
+      if (res.status === 401 || res.status === 403) { setNeedsSignIn(true); setShowAddAddressModal(false); requestSignIn(); return; }
+      if (!res.ok || !data.address) throw new Error(data.error || 'Could not save the visit address. Please retry.');
       if (data.address) {
+        setCheckoutError('');
         setAddresses((prev) => [data.address, ...prev]);
         setSelectedAddressId(data.address.id);
         setPatientCoords({
@@ -321,7 +340,7 @@ function BookServiceContent() {
         setNewAddressLine2('');
       }
     } catch (err) {
-      console.error('Failed to create inline address:', err);
+      setAddressError(err instanceof Error ? err.message : 'Could not save the visit address. Please retry.');
     } finally {
       setSavingAddress(false);
     }
@@ -354,8 +373,25 @@ function BookServiceContent() {
 
   const selectedService = services.find((s) => s.id === selectedServiceId) || services[0] || null;
   const matchedPartner = partners.find((p) => p.id === selectedPartnerId) || null;
-  const selectedProfile = profiles.find((p) => p.id === selectedProfileId) || profiles[0] || null;
-  const selectedAddress = addresses.find((a) => a.id === selectedAddressId) || addresses[0] || null;
+  const selectedProfile = profiles.find((p) => p.id === selectedProfileId) || null;
+  const selectedAddress = addresses.find((a) => a.id === selectedAddressId) || null;
+  const paymentBlockedReason = isInitialLoading ? 'Loading your booking details.' : detailsError
+    || (!selectedProfile || !selectedAddress ? 'Select or add your patient profile and visit address before paying.' : '')
+    || (!selectedService ? 'Choose a service before paying.' : '')
+    || (selectedServiceId === 'srv_doc' && !matchedPartner ? 'Choose an available doctor before paying.' : '');
+
+  const continueBooking = () => {
+    setCheckoutError('');
+    const navigationError = isInitialLoading ? 'Loading your booking details.' : detailsError
+      || (!selectedProfile || !selectedAddress ? 'Select or add your patient profile and visit address before continuing.' : '')
+      || (currentStep === 4 ? paymentBlockedReason : '');
+    if (!authRequired && currentStep >= 2 && navigationError) {
+      setCheckoutError(navigationError);
+      if (!isInitialLoading && !detailsError && (!selectedProfile || !selectedAddress)) setCurrentStep(2);
+      return;
+    }
+    setCurrentStep((prev) => Math.min(prev + 1, 5) as 1 | 2 | 3 | 4 | 5);
+  };
 
   // If Doctor Consultation and doctor has custom consultation fee, use it
   const baseRate = (selectedService?.id === 'srv_doc' && matchedPartner?.consultation_fee != null)
@@ -371,6 +407,7 @@ function BookServiceContent() {
     if (loading) return;
     setCheckoutError('');
     if (authRequired) { requestSignIn(); return; }
+    if (paymentBlockedReason) { setCheckoutError(paymentBlockedReason); return; }
     if (!paymentReceipt) { setCheckoutError('Upload your successful payment receipt before submitting.'); return; }
     if (!selectedService) {
       alert('Please select a healthcare service first.');
@@ -623,8 +660,9 @@ function BookServiceContent() {
               <div className="flex items-center gap-2.5 text-xs text-teal-900">
                 <MapPin className="w-4 h-4 text-teal-700 shrink-0" />
                 <div>
-                  <span className="font-bold">Active Patient Coordinates: </span>
-                  <span className="font-medium text-slate-700">{patientCoords?.name || 'Locating...'}</span>
+                  <span className="font-bold">Location preview: </span>
+                  <span className="font-medium text-slate-700">{patientCoords?.name || 'No location selected'}</span>
+                  <p className="mt-1 text-slate-600">Save a visit address below. Detecting GPS alone does not save an address.</p>
                 </div>
               </div>
               <button
@@ -1058,23 +1096,34 @@ function BookServiceContent() {
               </div>
             </div>
 
-            {!authRequired && (isInitialLoading ? <p role="status">Loading your patient details…</p> : !selectedProfile || !selectedAddress ?
-              <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+            {!authRequired && <>
+              {!isInitialLoading && !detailsError && (!selectedProfile || !selectedAddress) && <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
                 <p>Select or add your patient profile and visit address before paying.</p>
                 <button type="button" onClick={() => setCurrentStep(2)} className="mt-2 font-bold underline">Choose patient & address</button>
-              </div> : <PaymentCheckout amount={totalAmount} reference={requestKey} receipt={paymentReceipt}
-                onReceipt={setPaymentReceipt} onMethod={setPaymentMethod} beforeOpen={savePaymentDraft} />)}
+                <div className="mt-3 flex flex-wrap gap-3">
+                  {!selectedProfile && <button type="button" onClick={() => { setProfileError(''); setShowAddProfileModal(true); }} className="rounded-lg border border-amber-300 px-3 py-2 font-bold">Add patient profile</button>}
+                  {!selectedAddress && <button type="button" onClick={() => { setAddressError(''); setShowAddAddressModal(true); }} className="rounded-lg border border-amber-300 px-3 py-2 font-bold">Add visit address</button>}
+                </div>
+              </div>}
+              <PaymentCheckout amount={totalAmount} reference={requestKey} receipt={paymentReceipt}
+                onReceipt={setPaymentReceipt} onMethod={setPaymentMethod} beforeOpen={savePaymentDraft} paymentBlockedReason={paymentBlockedReason} />
+            </>}
             <label className="block text-sm font-semibold text-slate-700">
               UPI transaction ID (optional)
               <input value={paymentRef} onChange={e => setPaymentRef(e.target.value)} maxLength={64} className="mt-2 block w-full rounded-xl border border-slate-200 p-3" placeholder="Transaction ID from your receipt" />
             </label>
             {!authRequired && <p className="text-xs text-slate-500">Booking confirmation will be emailed to {userEmail} after the doctor accepts your request.</p>}
-            {checkoutError && <p role="alert" className="text-sm text-red-700">{checkoutError}</p>}
 
           </div>
         )}
 
         {/* Bottom Navigation Actions */}
+        {detailsError && <div role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
+          <p>{detailsError}</p>
+          <button type="button" disabled={isInitialLoading} onClick={() => setAuthRevision(value => value + 1)} className="mt-2 font-bold underline">Retry loading booking details</button>
+        </div>}
+        {checkoutError && <p role="alert" className="text-sm text-red-700">{checkoutError}</p>}
+        {currentStep === 5 && !authRequired && !paymentBlockedReason && !paymentReceipt && <p className="text-sm text-slate-600">Upload your payment receipt to enable appointment submission.</p>}
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
           {currentStep > 1 ? (
             <button
@@ -1090,7 +1139,7 @@ function BookServiceContent() {
 
           {currentStep < 5 ? (
             <button
-              onClick={() => setCurrentStep((prev) => (prev + 1) as any)}
+              onClick={continueBooking}
               className="px-6 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-700/20 transition-all"
             >
               <span>Continue</span>
@@ -1099,8 +1148,8 @@ function BookServiceContent() {
           ) : (
             <button
               onClick={handleFinalCheckout}
-              disabled={loading || sessionStatus === 'loading' || (!authRequired && (isInitialLoading || !paymentReceipt || !requestKey))}
-              className="px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-75"
+              disabled={loading || sessionStatus === 'loading' || (!authRequired && (Boolean(paymentBlockedReason) || !paymentReceipt || !requestKey))}
+              className="px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <>
@@ -1134,6 +1183,7 @@ function BookServiceContent() {
             </div>
 
             <form onSubmit={handleSaveInlineProfile} className="space-y-3.5 text-xs">
+              {profileError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{profileError}</p>}
               <div>
                 <label className="font-bold text-slate-700 uppercase tracking-wider block mb-1">Full Name</label>
                 <input
@@ -1258,6 +1308,7 @@ function BookServiceContent() {
             </div>
 
             <form onSubmit={handleSaveInlineAddress} className="space-y-4 text-xs">
+              {addressError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">{addressError}</p>}
               {/* Location Picker (Live GPS & Autocomplete) */}
               <div className="p-3.5 rounded-2xl bg-teal-50/50 border border-teal-200/80 space-y-2">
                 <span className="font-bold text-teal-900 uppercase tracking-wider block text-[11px]">
