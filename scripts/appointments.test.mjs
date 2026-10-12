@@ -70,6 +70,9 @@ const dispatch = load('src/app/api/admin/dispatch/route.ts').PUT;
 const receiptRoute = load('src/app/api/bookings/[id]/receipt/route.ts').GET;
 const doctorVisit = load('src/app/api/pro/visits/[id]/route.ts');
 const patientVisit = load('src/app/api/patient/bookings/[id]/route.ts');
+dependencies['@/lib/revenue'] = load('src/lib/revenue.ts');
+const billing = load('src/app/api/super-admin/billing/route.ts');
+const superStats = load('src/app/api/super-admin/stats/route.ts');
 const screenshot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=';
 const bookingPayload = () => ({ patientProfileId: 'profile', addressId: 'address', serviceId: 'service', partnerId: 'doctor',
   totalAmount: 100, scheduledDate: '2099-03-01', scheduledTimeSlot: '10:00 AM - 11:00 AM',
@@ -378,6 +381,61 @@ test('receipt booking acknowledges the patient and notifies the doctor; approval
   await confirm({ json: async () => ({ paymentVerified: true }) }, context);
   assert.equal(messages.length, 3);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 1);
+});
+
+test('superadmin billing and dashboard count a manual payment only after doctor verification, exactly once', async () => {
+  await booking('legacy-paid'); // A historical PAID label alone is not verification evidence.
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const created = await bookings.POST({ json: async () => bookingPayload() });
+  const id = created.body.booking.id;
+  const context = { params: Promise.resolve({ id }) };
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  assert.equal((await billing.GET()).body.summary.grossRevenue, 0);
+  assert.equal((await billing.GET()).body.appointments.length, 0);
+  assert.equal((await superStats.GET()).body.metrics.totalGmv, 0);
+  session = { user: { id: 'doctor', role: 'PARTNER' } };
+  assert.equal((await confirm({ json: async () => ({}) }, context)).status, 400);
+  smtpFails = true; // Accounting must not depend on successful email delivery.
+  assert.equal((await confirm({ json: async () => ({ paymentVerified: true }) }, context)).status, 200);
+  assert.equal((await confirmBooking(id)).body.alreadyConfirmed, true);
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  const ledger = await billing.GET();
+  assert.equal(ledger.status, 200);
+  assert.equal(ledger.body.summary.grossRevenue, 100);
+  assert.equal(ledger.body.summary.platformCommission, 10);
+  assert.equal(ledger.body.summary.netClinicianPayouts, 90);
+  assert.equal(ledger.body.summary.totalTransactions, 1);
+  assert.equal(ledger.body.invoices.length, 1);
+  assert.equal(ledger.body.appointments[0].payment_verified_by, 'doctor');
+  assert.equal(ledger.body.appointments[0].verified_by_name, 'Test Doctor');
+  assert.ok(ledger.body.appointments[0].payment_verified_at);
+  const stats = await superStats.GET();
+  assert.equal(stats.body.metrics.totalGmv, 100);
+  assert.equal(stats.body.metrics.totalBookings, 2);
+
+  const verifiedAt = ledger.body.appointments[0].payment_verified_at;
+  session = { user: { id: 'admin', role: 'ADMIN' } };
+  await dispatch({ json: async () => ({ bookingId: id, partnerId: 'doctor2', partnerName: 'Second Doctor', status: 'ASSIGNED' }) });
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  assert.equal((await billing.GET()).body.summary.grossRevenue, 100);
+  session = { user: { id: 'doctor2', role: 'PARTNER' } };
+  assert.equal((await confirmBooking(id)).status, 200);
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  const refreshed = (await billing.GET()).body;
+  assert.equal(refreshed.summary.grossRevenue, 100);
+  assert.equal(refreshed.invoices.length, 1);
+  assert.equal(refreshed.appointments[0].payment_verified_by, 'doctor');
+  assert.equal(String(refreshed.appointments[0].payment_verified_at), String(verifiedAt));
+});
+
+test('billing refuses to claim a bank transfer and returns an error when accounting storage fails', async () => {
+  session = { user: { id: 'super', role: 'SUPER_ADMIN' } };
+  const payout = await billing.POST({ json: async () => ({ action: 'DISBURSE_BATCH_PAYOUTS' }) });
+  assert.equal(payout.status, 501);
+  assert.equal(payout.body.success, undefined);
+  databaseFails = true;
+  assert.equal((await billing.GET()).status, 503);
+  assert.equal((await superStats.GET()).status, 503);
 });
 
 test('receipt and patient details are private to the patient and assigned doctor', async () => {

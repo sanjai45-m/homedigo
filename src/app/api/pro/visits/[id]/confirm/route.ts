@@ -69,7 +69,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       `WITH confirmed AS (
          UPDATE bookings SET status = 'CONFIRMED', doctor_confirmed_at = NOW(),
            appointment_starts_at = $3::timestamptz, scheduled_date = $4,
-           payment_status = 'PAID', payment_verified_at = COALESCE(payment_verified_at, NOW()), payment_verified_by = $2
+           payment_status = 'PAID', payment_verified_at = COALESCE(payment_verified_at, NOW()), payment_verified_by = COALESCE(payment_verified_by, $2)
          WHERE id = $1 AND partner_id = $2 AND doctor_confirmed_at IS NULL
            AND status IN ('PENDING', 'ASSIGNED', 'CONFIRMED') AND $3::timestamptz > NOW()
            AND (payment_status = 'PAID' OR (payment_status = 'UNDER_REVIEW'

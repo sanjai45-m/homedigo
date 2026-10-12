@@ -30,6 +30,8 @@ function load(file, globals = {}) {
 }
 const revenue = load('src/lib/revenue.ts');
 dependencies['@/lib/revenue'] = revenue;
+dependencies['./db'] = dependencies['@/lib/db'];
+dependencies['@/lib/appointment-schema'] = load('src/lib/appointment-schema.ts');
 const billing = load('src/app/api/super-admin/billing/route.ts');
 const earnings = load('src/app/api/pro/earnings/route.ts');
 const services = load('src/app/api/admin/services/route.ts');
@@ -38,9 +40,9 @@ before(async () => {
   await db.exec(`
     CREATE TABLE users (id TEXT, name TEXT, email TEXT);
     CREATE TABLE partner_profiles (user_id TEXT, specialization TEXT, council_reg_number TEXT);
-    CREATE TABLE bookings (id TEXT, booking_number TEXT, service_title TEXT, patient_name TEXT,
+    CREATE TABLE bookings (id TEXT PRIMARY KEY, user_id TEXT, booking_number TEXT, service_title TEXT, patient_name TEXT,
       partner_id TEXT, partner_name TEXT, total_amount NUMERIC(10,2), payment_status TEXT,
-      payment_ref TEXT, status TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+      payment_ref TEXT, payment_method TEXT, status TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
     CREATE TABLE services (id TEXT, title TEXT, category TEXT, description TEXT, base_price NUMERIC,
       visiting_fee NUMERIC, commission_percentage NUMERIC, duration_minutes INTEGER, icon TEXT, is_active BOOLEAN);
     INSERT INTO users VALUES ('doctor', 'Test Doctor', 'doctor@example.test');
@@ -78,6 +80,7 @@ test('billing totals sum per-appointment rounding across all rows and match part
       VALUES ($1, $1, 'Home Visit', 'Patient', 'doctor', 'Test Doctor', $2, 'PAID', 'COMPLETED')`,
       [String(index), index === 0 ? 0 : 10.05]);
   }
+  await db.exec("UPDATE bookings SET payment_verified_at = NOW(), payment_verified_by = 'doctor'");
   await db.exec(`INSERT INTO invoices (id, booking_id, invoice_number, service_title, subtotal, tax_amount, total_paid)
     VALUES ('invoice', '1', 'INV1', 'Home Visit', 10.05, 0, 10.05),
            ('free', '0', 'INV0', 'Home Visit', 0, 0, 0)`);
@@ -87,6 +90,7 @@ test('billing totals sum per-appointment rounding across all rows and match part
   assert.equal(response.summary.grossRevenue, 241.2);
   assert.equal(response.summary.platformCommission, 24.24);
   assert.equal(response.summary.netClinicianPayouts, 216.96);
+  assert.equal(response.summary.gstTaxCollected, 36.72);
   const invoice = response.invoices.find(row => row.id === 'invoice');
   assert.equal(invoice.commission, 1.01);
   assert.equal(invoice.netPayout, 9.04);
@@ -105,6 +109,26 @@ test('service configuration consistently reports and saves the fixed 10% rate', 
   assert.equal(Number(updated.service.commission_percentage), 10);
   const created = await services.POST({ json: async () => ({ title: 'New Service', basePrice: 200, commissionPercentage: 15 }) });
   assert.equal(Number(created.service.commission_percentage), 10);
+});
+
+test('unverified, pending, rejected and refunded amounts and their invoices never inflate billing', async () => {
+  const before = await billing.GET();
+  for (const [id, paymentStatus, visitStatus, verifiedAt, verifiedBy] of [
+    ['pending', 'UNDER_REVIEW', 'PENDING', null, null],
+    ['rejected', 'UNDER_REVIEW', 'CANCELLED', null, null],
+    ['legacy-paid', 'PAID', 'COMPLETED', null, null],
+    ['no-verifier', 'PAID', 'CONFIRMED', new Date().toISOString(), null],
+    ['refunded', 'REFUNDED', 'CANCELLED', new Date().toISOString(), 'doctor'],
+  ]) {
+    await db.query(`INSERT INTO bookings (id, total_amount, payment_status, status, payment_verified_at, payment_verified_by)
+      VALUES ($1, 9999, $2, $3, $4, $5)`, [id, paymentStatus, visitStatus, verifiedAt, verifiedBy]);
+    await db.query(`INSERT INTO invoices (id, booking_id, invoice_number, service_title, subtotal, tax_amount, total_paid)
+      VALUES ($1, $1, $1, 'Test invoice', 9999, 0, 9999)`, [id]);
+  }
+  const after = await billing.GET();
+  assert.deepEqual(after.summary, before.summary);
+  assert.equal(after.invoices.length, before.invoices.length);
+  assert.ok(after.appointments.every(row => row.payment_verified_at && row.payment_verified_by));
 });
 
 test('superadmin PDF includes the actual total and both shares with the same 10% rate', () => {

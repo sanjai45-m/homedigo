@@ -1,6 +1,11 @@
 export const HOMEDIGO_REVENUE_PERCENT = 10;
 export const CLINICIAN_REVENUE_PERCENT = 100 - HOMEDIGO_REVENUE_PERCENT;
 
+// Written atomically by the doctor's accept/payment-verification action.
+// Keep verified receipts in the audit ledger if a visit is later reassigned.
+export const VERIFIED_PAYMENT_SQL = `b.payment_status = 'PAID'
+  AND b.payment_verified_at IS NOT NULL AND b.payment_verified_by IS NOT NULL`;
+
 // Round the application share to paise, then give the remainder to the clinician.
 // Computing both percentages independently can lose or create a paisa.
 export function splitAppointmentAmount(amount: number | string | null | undefined) {

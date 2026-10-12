@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { RevenueSplit } from '@/components/RevenueSplit';
 import { HOMEDIGO_REVENUE_PERCENT } from '@/lib/revenue';
@@ -38,25 +38,41 @@ export default function SuperAdminDashboardPage() {
     gstTaxCollected: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const fetching = useRef(false);
 
-  const loadData = async () => {
+  const loadData = async (quiet = false) => {
+    if (fetching.current) return;
+    fetching.current = true;
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
+      const read = async (path: string) => {
+        const response = await fetch(path, { cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Dashboard totals could not be loaded. Please retry.');
+        return data;
+      };
       const [statsRes, billingRes] = await Promise.all([
-        fetch('/api/super-admin/stats').then((r) => r.json()),
-        fetch('/api/super-admin/billing').then((r) => r.json()),
+        read('/api/super-admin/stats'),
+        read('/api/super-admin/billing'),
       ]);
+      setError('');
       if (statsRes.metrics) setStats(statsRes.metrics);
       if (billingRes.summary) setBillingSummary(billingRes.summary);
     } catch (e) {
-      console.error(e);
+      setError(e instanceof Error ? e.message : 'Dashboard totals could not be loaded. Please retry.');
     } finally {
       setLoading(false);
+      fetching.current = false;
     }
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
+    const refresh = () => { void loadData(true); };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, []);
 
   return (
@@ -82,7 +98,7 @@ export default function SuperAdminDashboardPage() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={loadData}
+            onClick={() => void loadData()}
             className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold shadow-2xs transition-all"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-purple-600' : ''}`} />
@@ -99,21 +115,22 @@ export default function SuperAdminDashboardPage() {
       </div>
 
       {/* KPI Cards Strip */}
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-700">{error}</p>}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total GMV */}
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Total Appointment Amount</span>
+            <span>Doctor-Verified Payment Amount</span>
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
               <DollarSign className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-            ₹{(billingSummary.grossRevenue || stats.totalGmv || 0).toLocaleString('en-IN')}
+            ₹{(billingSummary.grossRevenue ?? 0).toLocaleString('en-IN')}
           </div>
           <div className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1 font-semibold">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>100% Real-time Neon Sync</span>
+            <span>Added after doctor payment verification; updates every 15 seconds</span>
           </div>
         </div>
 
@@ -218,7 +235,7 @@ export default function SuperAdminDashboardPage() {
             </div>
             <h3 className="text-lg font-bold text-slate-900 font-heading">Financial Billing & Payouts</h3>
             <p className="text-xs text-slate-500 leading-relaxed mt-1">
-              Execute batch clinician payouts, audit 18% GST tax invoices, and monitor weekly settlement disbursements with 1-click execution.
+              Audit doctor-verified payments, review invoices, and track the Homedigo and clinician shares of each accepted payment.
             </p>
           </div>
           <Link

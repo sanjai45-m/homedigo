@@ -1,12 +1,16 @@
 import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { VERIFIED_PAYMENT_SQL } from '@/lib/revenue';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 
 export async function GET() {
   const authorization = await requireApiUser(["SUPER_ADMIN"]);
   if (authorization.response) return authorization.response;
 
-  if (isDbConfigured) {
+  try {
+    if (!isDbConfigured) throw new Error('Storage unavailable');
+    await ensureAppointmentSchema();
     const [userCounts, bookingCounts, serviceCounts] = await Promise.all([
       executeQuery(`
         SELECT 
@@ -18,11 +22,12 @@ export async function GET() {
       executeQuery(`
         SELECT 
           COUNT(*) as total_bookings,
-          COALESCE(SUM(total_amount), 0) as total_gmv
-        FROM bookings
+          COALESCE(SUM(total_amount) FILTER (WHERE ${VERIFIED_PAYMENT_SQL}), 0) as total_gmv
+        FROM bookings b
       `),
       executeQuery(`SELECT COUNT(*) as total_services FROM services WHERE is_active = true`),
     ]);
+    if ([userCounts, bookingCounts, serviceCounts].some(result => !result.isConnected)) throw new Error('Storage unavailable');
 
     return NextResponse.json({
       metrics: {
@@ -35,19 +40,8 @@ export async function GET() {
         uptime: '99.98%',
         serverlessRegion: 'AWS us-east-2 (Neon Serverless)',
       },
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch {
+    return NextResponse.json({ error: 'Dashboard totals could not be loaded. Please retry.' }, { status: 503 });
   }
-
-  return NextResponse.json({
-    metrics: {
-      totalAdmins: 0,
-      totalPartners: 0,
-      totalPatients: 0,
-      totalBookings: 0,
-      totalGmv: 0,
-      totalServices: 5,
-      uptime: '99.98%',
-      serverlessRegion: 'AWS us-east-2 (Neon Serverless)',
-    },
-  });
 }

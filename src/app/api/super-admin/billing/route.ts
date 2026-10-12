@@ -1,15 +1,18 @@
 import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
-import { HOMEDIGO_REVENUE_PERCENT, splitAppointmentAmount } from '@/lib/revenue';
+import { HOMEDIGO_REVENUE_PERCENT, splitAppointmentAmount, VERIFIED_PAYMENT_SQL } from '@/lib/revenue';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 
 export async function GET() {
   const authorization = await requireApiUser(["SUPER_ADMIN"]);
   if (authorization.response) return authorization.response;
 
-  if (isDbConfigured) {
+  try {
+    if (!isDbConfigured) throw new Error('Storage unavailable');
+    await ensureAppointmentSchema();
     // Ensure table exists
-    await executeQuery(`
+    const schema = await executeQuery(`
       CREATE TABLE IF NOT EXISTS invoices (
         id VARCHAR(64) PRIMARY KEY,
         booking_id VARCHAR(64),
@@ -23,35 +26,42 @@ export async function GET() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    if (!schema.isConnected) throw new Error('Storage unavailable');
 
     const revRes = await executeQuery(`
       SELECT 
         COALESCE(SUM(total_amount), 0) as gross_revenue,
         COALESCE(SUM(ROUND(total_amount * $1::numeric / 100, 2)), 0) as platform_commission,
+        COALESCE(SUM(total_amount - ROUND(total_amount / 1.18, 2)), 0) as gst_tax,
         COUNT(*) as total_transactions,
-        COUNT(CASE WHEN payment_status = 'PAID' THEN 1 END) as successful_payments
-      FROM bookings
+        COUNT(*) as successful_payments
+      FROM bookings b WHERE ${VERIFIED_PAYMENT_SQL}
     `, [HOMEDIGO_REVENUE_PERCENT]);
 
     const invRes = await executeQuery(`
-      SELECT id, booking_id, user_id, invoice_number, service_title, subtotal, tax_amount, total_paid, payment_ref, created_at
-      FROM invoices
-      ORDER BY created_at DESC
+      SELECT i.*, b.patient_name, b.payment_verified_at, u.name AS verified_by_name
+      FROM invoices i JOIN bookings b ON b.id = i.booking_id
+      LEFT JOIN users u ON u.id = b.payment_verified_by
+      WHERE ${VERIFIED_PAYMENT_SQL}
+      ORDER BY b.payment_verified_at DESC
       LIMIT 20
     `);
 
     const appointmentsRes = await executeQuery(`
-      SELECT id, booking_number, service_title, patient_name, partner_name,
-             total_amount, payment_status, status, created_at
-      FROM bookings
-      ORDER BY created_at DESC
+      SELECT b.id, b.booking_number, b.service_title, b.patient_name, b.partner_name,
+             b.total_amount, b.payment_status, b.status, b.created_at, b.payment_verified_at,
+             b.payment_verified_by, b.payment_method, b.payment_ref, u.name AS verified_by_name
+      FROM bookings b LEFT JOIN users u ON u.id = b.payment_verified_by
+      WHERE ${VERIFIED_PAYMENT_SQL}
+      ORDER BY b.payment_verified_at DESC
       LIMIT 20
     `);
+    if ([revRes, invRes, appointmentsRes].some(result => !result.isConnected)) throw new Error('Storage unavailable');
 
     const gross = Number(revRes.rows[0]?.gross_revenue || 0);
     const platformCommission = Number(revRes.rows[0]?.platform_commission || 0);
     const netClinicianPayouts = Number((gross - platformCommission).toFixed(2));
-    const gstTaxCollected = Number((gross > 0 ? gross - gross / 1.18 : 0).toFixed(2));
+    const gstTaxCollected = Number(revRes.rows[0]?.gst_tax || 0);
 
     return NextResponse.json({
       summary: {
@@ -70,39 +80,15 @@ export async function GET() {
         ...appointment,
         ...splitAppointmentAmount(appointment.total_amount),
       })),
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store' } });
+  } catch {
+    return NextResponse.json({ error: 'Billing could not be loaded. Please retry.' }, { status: 503 });
   }
-
-  return NextResponse.json({
-    summary: {
-      grossRevenue: 0,
-      platformCommission: 0,
-      netClinicianPayouts: 0,
-      gstTaxCollected: 0,
-      successfulPayments: 0,
-      totalTransactions: 0,
-    },
-    invoices: [],
-    appointments: [],
-  });
 }
 
 export async function POST(request: Request) {
   const authorization = await requireApiUser(["SUPER_ADMIN"], request);
   if (authorization.response) return authorization.response;
 
-  try {
-    const body = await request.json();
-    const { action = 'DISBURSE_BATCH_PAYOUTS' } = body;
-
-    const batchId = `BATCH_PAYOUT_${Date.now()}`;
-    return NextResponse.json({
-      success: true,
-      batchId,
-      disbursedAt: new Date().toISOString(),
-      message: 'All verified partner weekly earnings successfully disbursed via direct UPI/NEFT settlement.',
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Disbursement failed' }, { status: 500 });
-  }
+  return NextResponse.json({ error: 'Automatic payouts are not configured. This ledger records doctor-verified manual payments; it does not transfer money.' }, { status: 501 });
 }
