@@ -366,7 +366,7 @@ export default function PartnerLoginPage() {
             {/* Password */}
             <div>
               <label htmlFor="partner-register-password" className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
-                Create Password (Min 6 chars)
+                Create Password (Min 12 chars)
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -377,7 +377,7 @@ export default function PartnerLoginPage() {
                   autoComplete="new-password"
                   type={showPassword ? 'text' : 'password'}
                   required
-                  minLength={6}
+                  minLength={12}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Set your account password"

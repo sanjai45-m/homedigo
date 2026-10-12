@@ -154,7 +154,7 @@ test('a booking 401 reveals inline sign-in and keeps the receipt and selections 
         services: [{ id: 'srv_doc', title: 'Home visit', base_price: '500', visiting_fee: '50' }],
         profiles: [{ id: 'profile', user_id: 'patient', full_name: 'Test Patient' }],
         addresses: [{ id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' }],
-        partners: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500' }],
+        doctors: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500' }],
       });
     }, document: { getElementById: () => null }, sessionStorage: { getItem: () => null },
   }, {

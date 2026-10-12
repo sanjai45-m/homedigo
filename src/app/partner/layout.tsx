@@ -31,6 +31,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   const [isOnline, setIsOnline] = useState<boolean | null>(null); // null = loading from DB
   const [togglingShift, setTogglingShift] = useState(false);
   const [partnerProfile, setPartnerProfile] = useState<any>(null);
+  const [accessError, setAccessError] = useState('');
 
   // Auth guard — redirect if not authenticated as PARTNER
   useEffect(() => {
@@ -54,6 +55,12 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
         // Load profile data
         const res = await fetch('/api/pro/dashboard');
         const data = await res.json();
+        if (!res.ok) {
+          setAccessError(data.error || 'Unable to access your workspace. Please sign in again.');
+          setIsOnline(false);
+          return;
+        }
+        setAccessError('');
         if (data.partner) {
           setPartnerProfile(data.partner);
         }
@@ -250,7 +257,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
       {/* Main Content Area */}
       <main id="portal-content" className={styles.workspace}>
         <PortalHeader label="Clinician workspace" />
-        <div key={pathname} className={styles.page}>{children}</div>
+        <div key={pathname} className={styles.page}>{accessError ? <p role="alert" className="rounded-xl bg-amber-50 p-6 text-amber-900">{accessError}</p> : children}</div>
       </main>
     </div>
   );

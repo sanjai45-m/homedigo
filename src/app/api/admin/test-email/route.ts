@@ -1,9 +1,13 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
 
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const email = typeof body?.email === 'string' ? body.email.trim() : '';

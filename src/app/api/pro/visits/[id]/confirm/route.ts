@@ -1,6 +1,5 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
@@ -9,7 +8,10 @@ import { processAppointmentEmails } from '@/lib/appointment-notifications';
 export const maxDuration = 60;
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PARTNER"], request);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id || user.role !== 'PARTNER') {
     return NextResponse.json({ error: 'Sign in as the assigned doctor to confirm.' }, { status: 401 });

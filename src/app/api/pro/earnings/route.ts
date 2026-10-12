@@ -1,22 +1,17 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { splitAppointmentAmount } from '@/lib/revenue';
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PARTNER"]);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const sessionUserId = (session?.user as any)?.id;
 
   if (isDbConfigured) {
-    // Pick logged in partner ID or first partner as fallback for dev
-    let partnerId = sessionUserId;
-    if (!partnerId) {
-      const firstPartner = await executeQuery(`SELECT user_id FROM partner_profiles LIMIT 1`);
-      if (firstPartner.isConnected && firstPartner.rows.length > 0) {
-        partnerId = firstPartner.rows[0].user_id;
-      }
-    }
+    const partnerId = authorization.user.id;
 
     if (partnerId) {
       // Fetch partner info
@@ -33,7 +28,7 @@ export async function GET() {
         `SELECT b.id, b.booking_number, b.service_title, b.patient_name, b.total_amount,
                 b.payment_status, b.payment_ref, b.status, b.created_at
          FROM bookings b
-         WHERE b.partner_id = $1 OR b.partner_id IS NULL
+         WHERE b.partner_id = $1
          ORDER BY b.created_at DESC`,
         [partnerId]
       );

@@ -1,8 +1,12 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { hashPassword } from '@/lib/passwords';
 
 export async function GET() {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
   if (isDbConfigured) {
     const res = await executeQuery(
       `SELECT u.id, u.name, u.email, u.phone, u.image, u.created_at,
@@ -27,6 +31,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const {
@@ -56,19 +63,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Name, email, and specialization are required' }, { status: 400 });
     }
 
+    if (typeof password !== 'string' || password.length < 12) return NextResponse.json({ error: 'Use a password with at least 12 characters.' }, { status: 400 });
     const userId = `usr_pro_${Date.now()}`;
     const profileId = `prof_pro_${Date.now()}`;
 
     if (isDbConfigured) {
-      const passwordHash = hashPassword(password || 'Partner@123');
+      const passwordHash = hashPassword(password);
 
       // 1. Insert into users
-      await executeQuery(
+      const insertedUser = await executeQuery(
         `INSERT INTO users (id, name, email, phone, role, image, password_hash)
          VALUES ($1, $2, $3, $4, 'PARTNER', $5, $6)
-         ON CONFLICT (email) DO UPDATE SET name = $2, phone = $4, image = $5, password_hash = COALESCE($6, users.password_hash)`,
-        [userId, name, email, phone, image, passwordHash]
+         ON CONFLICT (email) DO NOTHING RETURNING id`,
+        [userId, name, email.trim().toLowerCase(), phone, image, passwordHash]
       );
+
+      if (!insertedUser.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (!insertedUser.rows.length) return NextResponse.json({ error: 'An account already uses this email.' }, { status: 409 });
 
       // 2. Insert into partner_profiles
       const profRes = await executeQuery(
@@ -161,6 +172,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const {
@@ -191,6 +205,9 @@ export async function PUT(request: Request) {
     }
 
     if (isDbConfigured) {
+      const target = await executeQuery("SELECT id FROM users WHERE id = $1 AND role = 'PARTNER'", [userId]);
+      if (!target.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (!target.rows.length) return NextResponse.json({ error: 'Partner not found.' }, { status: 404 });
       // 1. Update user identity if name, email, phone, or image provided
       if (name || email || phone || image) {
         await executeQuery(
@@ -200,7 +217,7 @@ export async function PUT(request: Request) {
                phone = COALESCE($3, phone),
                image = COALESCE($4, image),
                updated_at = CURRENT_TIMESTAMP
-           WHERE id = $5`,
+           WHERE id = $5 AND role = 'PARTNER'`,
           [name, email, phone, image, userId]
         );
       }
@@ -255,6 +272,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('id');
@@ -264,6 +284,9 @@ export async function DELETE(request: Request) {
     }
 
     if (isDbConfigured) {
+      const target = await executeQuery("SELECT id FROM users WHERE id = $1 AND role = 'PARTNER'", [userId]);
+      if (!target.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (!target.rows.length) return NextResponse.json({ error: 'Partner not found.' }, { status: 404 });
       await executeQuery(`UPDATE bookings SET partner_id = NULL WHERE partner_id = $1`, [userId]);
       await executeQuery(`DELETE FROM partner_profiles WHERE user_id = $1`, [userId]);
       await executeQuery(`DELETE FROM users WHERE id = $1 AND role = 'PARTNER'`, [userId]);

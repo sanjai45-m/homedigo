@@ -11,7 +11,7 @@ export async function GET(request: Request) {
 
     if (isDbConfigured) {
       let query = `
-        SELECT u.id, u.name, u.email, u.phone, u.image,
+        SELECT u.id, u.name, u.image,
                p.partner_type, p.speciality_id, p.specialization, p.qualifications,
                p.consultation_fee, p.council_reg_number, p.experience_years,
                p.service_radius_km, p.verification_status, p.availability, p.rating,

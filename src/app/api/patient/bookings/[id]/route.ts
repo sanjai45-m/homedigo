@@ -1,13 +1,15 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const userId = (session?.user as { id?: string })?.id;
   if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
   const { id } = await params;
@@ -38,7 +40,10 @@ export async function GET(
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const userId = (session?.user as { id?: string })?.id;
   if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
   const { id } = await params;

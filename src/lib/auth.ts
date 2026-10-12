@@ -2,7 +2,8 @@ import { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { executeQuery, isDbConfigured } from './db';
-import { verifyPassword } from './passwords';
+import { hashPassword, isRetiredSetupPassword, verifyPassword } from './passwords';
+import { randomUUID } from 'node:crypto';
 
 export const isGoogleAuthReady = Boolean(
   process.env.GOOGLE_CLIENT_ID &&
@@ -11,7 +12,7 @@ export const isGoogleAuthReady = Boolean(
 );
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env.NEXTAUTH_SECRET || 'fallback_secret_for_local_development_32ch',
+  secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60, // 30 days
@@ -72,6 +73,14 @@ export const authOptions: NextAuthOptions = {
           if (!user.password_hash || !verifyPassword(password, user.password_hash)) {
             throw new Error('Incorrect password. Please try again.');
           }
+          if (isRetiredSetupPassword(password)) {
+            throw new Error('This setup password has been retired. Contact the site owner to reset your password.');
+          }
+          if (!user.password_hash.startsWith('scrypt:')) {
+            const upgraded = await executeQuery('UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3',
+              [hashPassword(password), user.id, user.password_hash]);
+            if (!upgraded.isConnected) throw new Error('Sign-in is temporarily unavailable.');
+          }
 
           // Verify role if expectedRole is passed
           if (expectedRole && user.role !== expectedRole && !(expectedRole === 'ADMIN' && user.role === 'SUPER_ADMIN')) {
@@ -89,49 +98,34 @@ export const authOptions: NextAuthOptions = {
           };
         }
 
-        // Fallback for mock/local sandbox if DB offline
-        if (email === 'superadmin@homedigo.care' && password === 'SuperAdmin@2026') {
-          return {
-            id: 'usr_super_root',
-            name: 'Executive Super Admin',
-            email: 'superadmin@homedigo.care',
-            role: 'SUPER_ADMIN',
-          };
-        }
-
         throw new Error('Database is offline and credentials could not be verified.');
       },
     }),
 
-    // 3. Quick Demo Provider for instant testing
-    CredentialsProvider({
-      id: 'demo-role-login',
-      name: 'Demo Role Login',
-      credentials: {
-        role: { label: 'Role', type: 'text' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.role) return null;
-        const role = credentials.role;
-        return {
-          id: `usr_${role.toLowerCase()}_demo`,
-          name: `${role} Demo User`,
-          email: `${role.toLowerCase()}@homedigo.care`,
-          role,
-        };
-      },
-    }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      if (account?.provider !== 'google') return true;
+      // Google accounts must map to a real patient record, never a privileged account.
+      if (!(profile as { email_verified?: boolean } | undefined)?.email_verified || !user.email) return false;
+      const result = await executeQuery(
+        `INSERT INTO users (id, name, email, image, role)
+         VALUES ($1, $2, $3, $4, 'PATIENT') ON CONFLICT (email) DO NOTHING`,
+        [`usr_${randomUUID()}`, user.name, user.email.toLowerCase(), user.image],
+      );
+      if (!result.isConnected) return false;
+      const existing = await executeQuery('SELECT id, role FROM users WHERE LOWER(email) = $1', [user.email.toLowerCase()]);
+      if (!existing.isConnected || existing.rows[0]?.role !== 'PATIENT') return false;
+      user.id = existing.rows[0].id;
+      (user as { role?: string }).role = 'PATIENT';
+      return true;
+    },
     async redirect({ url, baseUrl }) {
-      if (url.startsWith('/')) return `${baseUrl}${url}`;
+      if (url.startsWith('/') && !url.startsWith('//') && !url.includes('\\')) return `${baseUrl}${url}`;
       try {
         const parsedUrl = new URL(url);
         if (
-          parsedUrl.origin === baseUrl ||
-          parsedUrl.hostname.endsWith('netlify.app') ||
-          parsedUrl.hostname.endsWith('vercel.app') ||
-          parsedUrl.hostname.includes('homedigo')
+          parsedUrl.origin === baseUrl
         ) {
           return url;
         }
@@ -142,6 +136,7 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, user }) {
       if (user) {
+        token.authVersion = 1;
         token.role = (user as any).role || 'PATIENT';
         token.id = user.id;
         token.department = (user as any).department;
@@ -150,6 +145,8 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
+      // Sessions issued before removal of demo authentication must sign in again.
+      if (token.authVersion !== 1) return { ...session, user: undefined };
       if (session.user) {
         (session.user as any).role = token.role || 'PATIENT';
         (session.user as any).id = token.id || token.sub;

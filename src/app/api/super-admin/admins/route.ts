@@ -1,8 +1,13 @@
+import { randomBytes } from 'node:crypto';
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { hashPassword } from '@/lib/passwords';
 
 export async function GET() {
+  const authorization = await requireApiUser(["SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
   if (isDbConfigured) {
     const res = await executeQuery(
       `SELECT id, name, email, phone, role, department, access_level, image, created_at
@@ -19,6 +24,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const {
@@ -36,7 +44,7 @@ export async function POST(request: Request) {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const plainPassword = password && password.trim() ? password.trim() : `Admin@${Math.floor(1000 + Math.random() * 9000)}`;
+    const plainPassword = password && password.trim() ? password.trim() : randomBytes(18).toString('base64url');
     const passwordHash = hashPassword(plainPassword);
     const adminId = `usr_adm_${Date.now()}`;
 
@@ -44,20 +52,14 @@ export async function POST(request: Request) {
       const insertRes = await executeQuery(
         `INSERT INTO users (id, name, email, password_hash, phone, role, department, access_level, image)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         ON CONFLICT (email) DO UPDATE SET 
-           name = $2,
-           password_hash = $4,
-           phone = $5,
-           role = $6,
-           department = $7,
-           access_level = $8,
-           image = $9,
-           updated_at = CURRENT_TIMESTAMP
+         ON CONFLICT (email) DO NOTHING
          RETURNING id, name, email, phone, role, department, access_level, image, created_at`,
         [adminId, name.trim(), cleanEmail, passwordHash, phone.trim(), 'ADMIN', department, accessLevel, image]
       );
 
-      if (insertRes.isConnected && insertRes.rows.length > 0) {
+      if (!insertRes.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (!insertRes.rows.length) return NextResponse.json({ error: 'An account already uses this email.' }, { status: 409 });
+      if (insertRes.rows.length > 0) {
         const savedAdmin = insertRes.rows[0];
         return NextResponse.json({
           success: true,
@@ -89,6 +91,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const authorization = await requireApiUser(["SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

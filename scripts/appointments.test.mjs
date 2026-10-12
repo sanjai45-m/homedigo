@@ -48,6 +48,7 @@ function load(path) {
   return exports;
 }
 
+dependencies['@/lib/api-auth'] = load('src/lib/api-auth.ts');
 const time = load('src/lib/appointment-time.ts');
 dependencies['@/lib/appointment-time'] = time;
 const payment = load('src/lib/payment.ts');
@@ -79,7 +80,7 @@ before(async () => {
     CREATE TABLE users (id VARCHAR(64) PRIMARY KEY, name TEXT, email TEXT, role TEXT, phone TEXT, image TEXT);
     CREATE TABLE addresses (id TEXT PRIMARY KEY, user_id TEXT, address_line1 TEXT, address_line2 TEXT, city TEXT, pincode TEXT, lat FLOAT, lng FLOAT);
     CREATE TABLE patient_profiles (id TEXT PRIMARY KEY, user_id TEXT, full_name TEXT, age INT, gender TEXT, blood_group TEXT, medical_notes TEXT);
-    CREATE TABLE partner_profiles (user_id TEXT, specialization TEXT, consultation_fee NUMERIC, latitude FLOAT, longitude FLOAT, location_name TEXT);
+    CREATE TABLE partner_profiles (user_id TEXT, verification_status TEXT DEFAULT 'APPROVED', specialization TEXT, consultation_fee NUMERIC, latitude FLOAT, longitude FLOAT, location_name TEXT);
     CREATE TABLE services (id TEXT PRIMARY KEY, title TEXT, base_price NUMERIC, visiting_fee NUMERIC, is_active BOOLEAN);
     CREATE TABLE bookings (
       id VARCHAR(64) PRIMARY KEY, booking_number TEXT, user_id TEXT, patient_profile_id TEXT,
@@ -112,7 +113,11 @@ beforeEach(async () => {
     INSERT INTO partner_profiles (user_id, specialization, consultation_fee) VALUES ('doctor', 'General medicine', 100);
     INSERT INTO users (id, name, email, role) VALUES ('doctor', 'Test Doctor', 'doctor@test.local', 'PARTNER'),
       ('doctor2', 'Second Doctor', 'doctor2@test.local', 'PARTNER'),
-      ('patient', 'Test Patient', 'patient@test.local', 'PATIENT');`);
+      ('patient', 'Test Patient', 'patient@test.local', 'PATIENT'),
+      ('other', 'Other Patient', 'other@test.local', 'PATIENT'),
+      ('super', 'Super Admin', 'super@test.local', 'SUPER_ADMIN'),
+      ('admin', 'Admin', 'admin@test.local', 'ADMIN');
+    INSERT INTO partner_profiles (user_id) VALUES ('doctor2');`);
 });
 after(() => db.close());
 
@@ -174,7 +179,7 @@ test('only the assigned signed-in doctor can confirm', async () => {
   for (const user of [undefined, { id: 'patient', role: 'PATIENT' }, { id: 'doctor2', role: 'PARTNER' }]) {
     session = user ? { user } : null;
     const response = await confirmBooking();
-    assert.ok([401, 404].includes(response.status));
+    assert.ok([401, 403, 404].includes(response.status));
   }
   assert.equal(messages.length, 0);
   assert.equal((await db.query('SELECT * FROM appointment_emails')).rows.length, 0);
@@ -379,10 +384,10 @@ test('receipt and patient details are private to the patient and assigned doctor
   assert.equal((await ownReceipt.arrayBuffer()).byteLength, Buffer.from(screenshot.split(',')[1], 'base64').length);
   for (const user of [undefined, { id: 'doctor2', role: 'PARTNER' }, { id: 'other', role: 'PATIENT' }]) {
     session = user ? { user } : null;
-    assert.ok([401, 404].includes((await receiptRoute({}, context)).status));
-    assert.ok([401, 404].includes((await doctorVisit.GET({}, context)).status));
+    assert.ok([401, 403, 404].includes((await receiptRoute({}, context)).status));
+    assert.ok([401, 403, 404].includes((await doctorVisit.GET({}, context)).status));
     const patientResult = await patientVisit.GET({}, context);
-    assert.ok(patientResult.status === 401 || patientResult.body.booking === null);
+    assert.ok([401, 403].includes(patientResult.status) || patientResult.body.booking === null);
   }
   session = { user: { id: 'doctor', role: 'PARTNER' } };
   assert.equal((await receiptRoute({}, context)).status, 200);
@@ -467,8 +472,8 @@ test('only super admins can read management settings or change the payment recip
   const settings = { phone: '9876543210', upiId: '', payeeName: 'Clinic' };
   for (const user of [undefined, { id: 'patient', role: 'PATIENT' }, { id: 'doctor', role: 'PARTNER' }, { id: 'admin', role: 'ADMIN' }]) {
     session = user ? { user } : null;
-    assert.equal((await adminPaymentSettings.GET()).status, 403);
-    assert.equal((await adminPaymentSettings.PUT({ json: async () => settings })).status, 403);
+    assert.equal((await adminPaymentSettings.GET()).status, user ? 403 : 401);
+    assert.equal((await adminPaymentSettings.PUT({ json: async () => settings })).status, user ? 403 : 401);
   }
   assert.equal((await publicPaymentSettings.GET()).body.phone, '9361557446');
   assert.equal((await db.query('SELECT * FROM payment_settings')).rows.length, 0);

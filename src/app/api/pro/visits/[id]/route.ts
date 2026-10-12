@@ -1,14 +1,16 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PARTNER"], request);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id || user.role !== 'PARTNER') return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });
   try {
@@ -33,9 +35,12 @@ export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authorization = await requireApiUser(["PARTNER"], request);
+  if (authorization.response) return authorization.response;
+
   const { id } = await params;
   try {
-    const session = await getServerSession(authOptions);
+    const session = { user: authorization.user };
     const user = session?.user as { id?: string; role?: string } | undefined;
     if (!user?.id || user.role !== 'PARTNER') {
       return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });

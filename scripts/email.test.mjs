@@ -80,6 +80,8 @@ test('an unaccepted recipient is not reported as a successful send', async () =>
 
 function route(send) {
   return loadModule('src/app/api/admin/test-email/route.ts', {}, {
+    // Endpoint authorization is exercised by api-authorization.test.mjs.
+    '@/lib/api-auth': { requireApiUser: async () => ({ user: { id: 'admin', role: 'ADMIN' } }) },
     '@/lib/email': { sendDoctorAppointmentEmail: send },
     'next/server': { NextResponse: { json: (body, init) => ({ body, status: init?.status || 200 }) } },
   }).POST;

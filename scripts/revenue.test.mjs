@@ -7,6 +7,8 @@ import { PGlite } from '@electric-sql/pglite';
 
 const db = new PGlite();
 const dependencies = {
+  // Financial calculations use authorized identities; the role matrix has its own integration suite.
+  '@/lib/api-auth': { requireApiUser: async roles => ({ user: { id: 'doctor', role: roles[0] } }) },
   'next/server': { NextResponse: { json: (body) => body } },
   'next-auth/next': { getServerSession: async () => ({ user: { id: 'doctor' } }) },
   '@/lib/auth': { authOptions: {} },

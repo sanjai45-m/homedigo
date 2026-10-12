@@ -1,41 +1,27 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId');
-  const email = searchParams.get('email');
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
 
-  if (isDbConfigured) {
-    let res;
-    if (userId || email) {
-      res = await executeQuery(
-        `SELECT id, user_id, label, address_line1, address_line2, landmark, city, pincode, lat, lng, is_default, created_at 
-         FROM addresses 
-         WHERE user_id = $1 OR user_id = $2 OR user_id = 'usr_pat_001' OR user_id IS NULL OR user_id = ''
-         ORDER BY is_default DESC, created_at ASC`,
-        [userId || 'usr_pat_001', email || 'usr_pat_001']
-      );
-    } else {
-      res = await executeQuery(
-        `SELECT id, user_id, label, address_line1, address_line2, landmark, city, pincode, lat, lng, is_default, created_at 
-         FROM addresses 
-         ORDER BY is_default DESC, created_at ASC`
-      );
-    }
-    if (res.isConnected) {
-      return NextResponse.json({ addresses: res.rows || [] });
-    }
-  }
-
-  return NextResponse.json({ addresses: [] });
+  const result = await executeQuery(
+    `SELECT id, user_id, label, address_line1, address_line2, landmark, city, pincode, lat, lng, is_default, created_at FROM addresses WHERE user_id = $1 ORDER BY is_default DESC, created_at ASC`,
+    [authorization.user.id],
+  );
+  if (!result.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+  return NextResponse.json({ addresses: result.rows });
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
+
   try {
+    const userId = authorization.user.id;
     const body = await request.json();
     const {
-      userId = 'usr_pat_001',
       label = 'Home',
       addressLine1,
       addressLine2 = '',
@@ -65,27 +51,16 @@ export async function POST(request: Request) {
       }
     }
 
-    const createdAddress = {
-      id,
-      user_id: userId,
-      label,
-      address_line1: addressLine1,
-      address_line2: addressLine2,
-      landmark,
-      city,
-      pincode,
-      lat,
-      lng,
-      is_default: isDefault,
-    };
-
-    return NextResponse.json({ success: true, address: createdAddress });
+    return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to add address' }, { status: 500 });
   }
 }
 
 export async function PUT(request: Request) {
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const {
@@ -109,35 +84,26 @@ export async function PUT(request: Request) {
       const updateRes = await executeQuery(
         `UPDATE addresses
          SET label = $1, address_line1 = $2, address_line2 = $3, landmark = $4, city = $5, pincode = $6, lat = $7, lng = $8, is_default = $9
-         WHERE id = $10
+         WHERE id = $10 AND user_id = $11
          RETURNING *`,
-        [label, addressLine1, addressLine2, landmark, city, pincode, lat, lng, isDefault, id]
+        [label, addressLine1, addressLine2, landmark, city, pincode, lat, lng, isDefault, id, authorization.user.id]
       );
-      if (updateRes.isConnected && updateRes.rows.length > 0) {
+      if (!updateRes.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (updateRes.rows.length > 0) {
         return NextResponse.json({ success: true, address: updateRes.rows[0] });
       }
     }
 
-    const updatedAddress = {
-      id,
-      label,
-      address_line1: addressLine1,
-      address_line2: addressLine2,
-      landmark,
-      city,
-      pincode,
-      lat,
-      lng,
-      is_default: isDefault,
-    };
-
-    return NextResponse.json({ success: true, address: updatedAddress });
+    return NextResponse.json({ error: 'Record not found.' }, { status: 404 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to update address' }, { status: 500 });
   }
 }
 
 export async function DELETE(request: Request) {
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -147,7 +113,9 @@ export async function DELETE(request: Request) {
     }
 
     if (isDbConfigured) {
-      await executeQuery('DELETE FROM addresses WHERE id = $1', [id]);
+      const deleted = await executeQuery('DELETE FROM addresses WHERE id = $1 AND user_id = $2 RETURNING id', [id, authorization.user.id]);
+      if (!deleted.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (!deleted.rows.length) return NextResponse.json({ error: 'Record not found.' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, message: 'Address deleted successfully' });

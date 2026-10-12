@@ -21,7 +21,7 @@ const dependencies = {
 function load(path) {
   const source = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText;
   const exports = {};
-  vm.runInNewContext(source, { exports, URL, URLSearchParams, require(name) { if (!(name in dependencies)) throw new Error(`Unexpected dependency ${name}`); return dependencies[name]; } });
+  vm.runInNewContext(source, { exports, Buffer, URL, URLSearchParams, require(name) { if (!(name in dependencies)) throw new Error(`Unexpected dependency ${name}`); return dependencies[name]; } });
   return exports;
 }
 const passwords = load('src/lib/passwords.ts');

@@ -1,8 +1,7 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { randomUUID } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { processAppointmentEmails } from '@/lib/appointment-notifications';
@@ -11,7 +10,10 @@ import { validateReceipt } from '@/lib/payment';
 export const maxDuration = 60;
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PATIENT"]);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const userId = (session?.user as { id?: string } | undefined)?.id;
   if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
   const result = await executeQuery(`SELECT * FROM bookings WHERE user_id = $1 ORDER BY created_at DESC`, [userId]);
@@ -19,8 +21,11 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["PATIENT"], request);
+  if (authorization.response) return authorization.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = { user: authorization.user };
     const user = session?.user as { id?: string; role?: string } | undefined;
     if (!user?.id || user.role !== 'PATIENT') return NextResponse.json({ error: 'Please sign in as a patient.' }, { status: 401 });
     if (!isDbConfigured) return NextResponse.json({ error: 'Booking storage is unavailable.' }, { status: 503 });
@@ -53,7 +58,7 @@ export async function POST(request: Request) {
       executeQuery(`SELECT * FROM addresses WHERE id = $1 AND user_id = $2`, [addressId, user.id]),
       executeQuery(`SELECT * FROM services WHERE id = $1 AND is_active = TRUE`, [serviceId]),
       executeQuery(`SELECT u.id, u.name, u.email, u.image, p.specialization, p.consultation_fee
-        FROM users u LEFT JOIN partner_profiles p ON p.user_id = u.id WHERE u.id = $1 AND u.role = 'PARTNER'`, [partnerId || null]),
+        FROM users u LEFT JOIN partner_profiles p ON p.user_id = u.id WHERE u.id = $1 AND u.role = 'PARTNER' AND p.verification_status = 'APPROVED'`, [partnerId || null]),
     ]);
     if ([profileRes, addressRes, serviceRes, doctorRes].some(r => !r.isConnected)) throw new Error('Storage unavailable');
     const profile = profileRes.rows[0], address = addressRes.rows[0], service = serviceRes.rows[0], doctor = doctorRes.rows[0];

@@ -167,7 +167,7 @@ function BookServiceContent() {
           fetch('/api/services'),
           userId ? fetch(`/api/patient/profiles?userId=${encodeURIComponent(userId)}`) : Promise.resolve({ json: async () => ({ profiles: [] }) }),
           userId ? fetch(`/api/patient/addresses?userId=${encodeURIComponent(userId)}`) : Promise.resolve({ json: async () => ({ addresses: [] }) }),
-          fetch('/api/admin/partners'),
+          fetch('/api/doctors'),
         ]);
         const srvData = await srvRes.json();
         const profData = await profRes.json();
@@ -190,7 +190,7 @@ function BookServiceContent() {
         setProfiles(loadedProfiles);
         setAddresses(loadedAddresses);
         
-        const availablePartners = partnerData.partners || [];
+        const availablePartners = partnerData.doctors || [];
         setPartners(availablePartners);
 
         if (loadedProfiles.length > 0) {

@@ -1,6 +1,5 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
 /**
@@ -9,8 +8,11 @@ import { executeQuery, isDbConfigured } from '@/lib/db';
  * Body: { availability: 'AVAILABLE' | 'BUSY' | 'OFFLINE' }
  */
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["PARTNER"], request);
+  if (authorization.response) return authorization.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = { user: authorization.user };
     const partnerId = (session?.user as any)?.id;
 
     if (!partnerId) {
@@ -58,8 +60,11 @@ export async function POST(request: Request) {
  * Returns the current availability of the logged-in partner.
  */
 export async function GET() {
+  const authorization = await requireApiUser(["PARTNER"]);
+  if (authorization.response) return authorization.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = { user: authorization.user };
     const partnerId = (session?.user as any)?.id;
 
     if (!partnerId) {

@@ -1,13 +1,15 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 
 export const maxDuration = 60;
 
 export async function GET() {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
   if (isDbConfigured) {
     const res = await executeQuery(
       `SELECT b.id, b.booking_number, b.patient_name, b.address_text, b.service_title, 
@@ -25,8 +27,11 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
-    const session = await getServerSession(authOptions);
+    const session = { user: authorization.user };
     if (!['ADMIN', 'SUPER_ADMIN'].includes((session?.user as { role?: string })?.role || '')) {
       return NextResponse.json({ error: 'Administrator access required.' }, { status: 403 });
     }
@@ -42,6 +47,13 @@ export async function PUT(request: Request) {
 
     if (isDbConfigured) {
       await ensureAppointmentSchema();
+      if (partnerId) {
+        const partner = await executeQuery(`SELECT u.id FROM users u
+          JOIN partner_profiles p ON p.user_id = u.id
+          WHERE u.id = $1 AND u.role = 'PARTNER' AND p.verification_status = 'APPROVED'`, [partnerId]);
+        if (!partner.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+        if (!partner.rows.length) return NextResponse.json({ error: 'Select an approved clinician.' }, { status: 400 });
+      }
       const updateRes = await executeQuery(
         `UPDATE bookings
          SET status = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN 'ASSIGNED'

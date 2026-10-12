@@ -1,5 +1,5 @@
 import { neon } from '@neondatabase/serverless';
-import { hashPassword } from './passwords';
+import { hashPassword, isRetiredSetupPassword } from './passwords';
 
 const connectionString = process.env.DATABASE_URL || process.env.NEON_DATABASE_URL;
 
@@ -293,8 +293,10 @@ export async function initializeDatabase() {
 
     // 10. Seed Super Admin account if not existing in DB
     const superAdminCheck = await executeQuery(`SELECT id FROM users WHERE role = 'SUPER_ADMIN' LIMIT 1`);
-    if (superAdminCheck.rows.length === 0) {
-      const superAdminPassHash = hashPassword('SuperAdmin@2026');
+    if (superAdminCheck.isConnected && superAdminCheck.rows.length === 0
+      && process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD && process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD.length >= 12
+      && !isRetiredSetupPassword(process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD)) {
+      const superAdminPassHash = hashPassword(process.env.BOOTSTRAP_SUPER_ADMIN_PASSWORD);
       await executeQuery(`
         INSERT INTO users (id, name, email, password_hash, phone, role, department, access_level)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

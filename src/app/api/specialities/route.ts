@@ -1,3 +1,4 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
@@ -25,6 +26,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const { name, description, icon = 'Stethoscope' } = body;
@@ -70,6 +74,9 @@ export async function POST(request: Request) {
 }
 
 export async function PUT(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const { id, name, description, icon } = body;
@@ -100,6 +107,9 @@ export async function PUT(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');

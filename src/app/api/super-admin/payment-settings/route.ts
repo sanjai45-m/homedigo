@@ -1,10 +1,12 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { getPaymentSettings, savePaymentSettings, validatePaymentSettings } from '@/lib/payment-settings';
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id || user.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Super-admin access required.' }, { status: 403 });
   try {
@@ -15,7 +17,10 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id || user.role !== 'SUPER_ADMIN') return NextResponse.json({ error: 'Super-admin access required.' }, { status: 403 });
   let settings;

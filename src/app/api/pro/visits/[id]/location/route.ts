@@ -1,6 +1,5 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
@@ -30,6 +29,9 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authorization = await requireApiUser(["PATIENT","PARTNER"], _request);
+  if (authorization.response) return authorization.response;
+
   const { id } = await params;
 
   if (isDbConfigured) {
@@ -40,8 +42,8 @@ export async function GET(
               b.status 
        FROM bookings b
        LEFT JOIN addresses a ON b.address_id = a.id
-       WHERE b.id = $1`,
-      [id]
+       WHERE b.id = $1 AND (($3 = 'PATIENT' AND b.user_id = $2) OR ($3 = 'PARTNER' AND b.partner_id = $2))`,
+      [id, authorization.user.id, authorization.user.role]
     );
     if (res.isConnected && res.rows.length > 0) {
       const row = res.rows[0];
@@ -63,11 +65,7 @@ export async function GET(
         isImmediate = distanceKm <= 0.4; // Within 400 meters
         etaMins = Math.max(1, Math.round((distanceKm / 25) * 60)); // Avg 25 km/h urban speed
 
-        // Auto-transition to ARRIVED if doctor gets within 500 meters (0.5 km) while ON_THE_WAY
-        if (distanceKm <= 0.5 && currentStatus === 'ON_THE_WAY') {
-          currentStatus = 'ARRIVED';
-          await executeQuery(`UPDATE bookings SET status = 'ARRIVED' WHERE id = $1`, [id]);
-        }
+
       }
 
       return NextResponse.json({
@@ -84,15 +82,7 @@ export async function GET(
     }
   }
 
-  return NextResponse.json({
-    lat: null,
-    lng: null,
-    status: 'ASSIGNED',
-    distanceKm: null,
-    isNearby: false,
-    isImmediate: false,
-    etaMins: null,
-  });
+  return NextResponse.json({ error: 'Appointment not found.' }, { status: 404 });
 }
 
 /**
@@ -105,10 +95,13 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const authorization = await requireApiUser(["PARTNER"], request);
+  if (authorization.response) return authorization.response;
+
   const { id } = await params;
 
   try {
-    const session = await getServerSession(authOptions);
+    const session = { user: authorization.user };
     const user = session?.user as { id?: string; role?: string } | undefined;
     if (!user?.id || user.role !== 'PARTNER') return NextResponse.json({ error: 'Doctor access required.' }, { status: 401 });
     await ensureAppointmentSchema();
@@ -133,8 +126,8 @@ export async function POST(
                 COALESCE(b.patient_lng, a.lng) as patient_lng 
          FROM bookings b
          LEFT JOIN addresses a ON b.address_id = a.id
-         WHERE b.id = $1`,
-        [id]
+         WHERE b.id = $1 AND b.partner_id = $2`,
+        [id, authorization.user.id]
       );
 
       let newStatus = 'ON_THE_WAY';
@@ -170,9 +163,9 @@ export async function POST(
                WHEN status IN ('CONFIRMED', 'ASSIGNED') THEN $3
                ELSE status
              END
-         WHERE id = $4 AND status IN ('CONFIRMED', 'ON_THE_WAY', 'ARRIVED')
+         WHERE id = $4 AND partner_id = $5 AND doctor_confirmed_at IS NOT NULL AND payment_status = 'PAID' AND status IN ('CONFIRMED', 'ON_THE_WAY', 'ARRIVED')
          RETURNING partner_lat, partner_lng, status`,
-        [lat, lng, newStatus, id]
+        [lat, lng, newStatus, id, authorization.user.id]
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
@@ -189,16 +182,7 @@ export async function POST(
       }
     }
 
-    // Offline fallback (dev mode)
-    return NextResponse.json({
-      success: true,
-      lat,
-      lng,
-      status: 'ARRIVED',
-      distanceKm: 0.1,
-      isNearby: true,
-      isImmediate: true,
-    });
+    return NextResponse.json({ error: 'Appointment is unavailable or has changed.' }, { status: 409 });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || 'Failed to update location' },

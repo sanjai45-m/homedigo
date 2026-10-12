@@ -24,9 +24,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (password.length < 6) {
+    if (password.length < 12) {
       return NextResponse.json(
-        { error: 'Password must be at least 6 characters long' },
+        { error: 'Password must be at least 12 characters long' },
         { status: 400 }
       );
     }
@@ -56,20 +56,22 @@ export async function POST(request: Request) {
           : 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=256&q=80';
 
       // 1. Insert into users table
-      await executeQuery(
+      const createdUser = await executeQuery(
         `INSERT INTO users (id, name, email, phone, role, image, password_hash)
-         VALUES ($1, $2, $3, $4, 'PARTNER', $5, $6)`,
+         VALUES ($1, $2, $3, $4, 'PARTNER', $5, $6) ON CONFLICT (email) DO NOTHING RETURNING id`,
         [userId, name, cleanEmail, phone, image, passwordHash]
       );
 
+      if (!createdUser.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+      if (!createdUser.rows.length) return NextResponse.json({ error: 'An account already uses this email.' }, { status: 409 });
       // 2. Insert into partner_profiles table
-      await executeQuery(
+      const createdProfile = await executeQuery(
         `INSERT INTO partner_profiles (
           id, user_id, partner_type, specialization, qualifications,
           consultation_fee, council_reg_number, experience_years, service_radius_km,
           location_name, city, latitude, longitude, verification_status, availability, bio
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING id`,
         [
           profileId,
           userId,
@@ -77,22 +79,23 @@ export async function POST(request: Request) {
           specialization,
           qualifications,
           partnerType === 'NURSE' ? 400 : 600,
-          `MCI-${Math.floor(10000 + Math.random() * 90000)}`,
+          '',
           5,
           10,
           locationName,
           city,
           12.9716,
           77.5946,
-          'APPROVED',
-          'AVAILABLE',
+          'PENDING',
+          'OFFLINE',
           `Registered Healthcare ${partnerType} on HomeDigo Connected Care Network.`,
         ]
       );
 
+      if (!createdProfile.isConnected || !createdProfile.rows.length) return NextResponse.json({ error: 'Profile creation failed. Contact support.' }, { status: 503 });
       return NextResponse.json({
         success: true,
-        message: 'Doctor / Partner account created successfully! Signing in...',
+        message: 'Account created. An administrator must approve your profile before you can receive appointments.',
         user: {
           id: userId,
           name,
@@ -102,10 +105,7 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({
-      success: true,
-      message: 'Demo partner created (Mock)',
-    });
+    return NextResponse.json({ error: 'Registration is unavailable.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || 'Failed to register partner clinician' },

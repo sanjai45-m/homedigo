@@ -1,11 +1,13 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { executeQuery } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await getServerSession(authOptions);
+  const authorization = await requireApiUser(["PATIENT","PARTNER"], _request);
+  if (authorization.response) return authorization.response;
+
+  const session = { user: authorization.user };
   const user = session?.user as { id?: string; role?: string } | undefined;
   if (!user?.id) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
   try {

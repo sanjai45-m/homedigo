@@ -95,7 +95,7 @@ export default function PartnersManager({ portalRole }: Props) {
     name: '',
     email: '',
     phone: '',
-    password: 'Partner@123',
+    password: '',
     partnerType: 'DOCTOR' as 'DOCTOR' | 'NURSE' | 'PHYSIOTHERAPIST' | 'CAREGIVER',
     specialityId: '',
     specialization: 'General Physician & Home Care',
@@ -296,7 +296,7 @@ export default function PartnersManager({ portalRole }: Props) {
           name: '',
           email: '',
           phone: '',
-          password: 'Partner@123',
+          password: '',
           partnerType: 'DOCTOR',
           specialityId: specialities[0]?.id || '',
           specialization: 'General Physician & Home Care',
@@ -1147,7 +1147,7 @@ export default function PartnersManager({ portalRole }: Props) {
                   <input
                     type="text"
                     required
-                    placeholder="Partner@123"
+                    placeholder="At least 12 characters"
                     value={newPartner.password}
                     onChange={(e) => setNewPartner({ ...newPartner, password: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-600 font-mono text-xs font-bold text-teal-800"

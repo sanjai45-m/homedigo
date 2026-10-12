@@ -18,8 +18,8 @@ import PortalLoginFrame from '@/components/portals/PortalLoginFrame';
 
 export default function SuperAdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('superadmin@homedigo.care');
-  const [password, setPassword] = useState('SuperAdmin@2026');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

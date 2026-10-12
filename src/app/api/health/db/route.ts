@@ -1,8 +1,12 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { isGoogleAuthReady } from '@/lib/auth';
 
 export async function GET() {
+  const authorization = await requireApiUser(["SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
   const dbStatus = isDbConfigured;
   let queryResult = null;
 

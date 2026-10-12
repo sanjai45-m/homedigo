@@ -1,8 +1,12 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { HOMEDIGO_REVENUE_PERCENT, splitAppointmentAmount } from '@/lib/revenue';
 
 export async function GET() {
+  const authorization = await requireApiUser(["SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
   if (isDbConfigured) {
     // Ensure table exists
     await executeQuery(`
@@ -84,6 +88,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const authorization = await requireApiUser(["SUPER_ADMIN"], request);
+  if (authorization.response) return authorization.response;
+
   try {
     const body = await request.json();
     const { action = 'DISBURSE_BATCH_PAYOUTS' } = body;

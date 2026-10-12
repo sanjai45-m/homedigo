@@ -1,7 +1,11 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 
 export async function GET() {
+  const authorization = await requireApiUser(["SUPER_ADMIN"]);
+  if (authorization.response) return authorization.response;
+
   if (isDbConfigured) {
     const [userCounts, bookingCounts, serviceCounts] = await Promise.all([
       executeQuery(`

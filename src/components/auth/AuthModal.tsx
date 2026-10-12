@@ -50,22 +50,6 @@ function AuthModalContent({ isOpen, onClose, defaultRole = 'PATIENT' }: AuthModa
     }
   };
 
-  const handleDemoRoleSignIn = async (role: 'PATIENT' | 'PARTNER' | 'ADMIN') => {
-    setLoading(true);
-    setErrorMessage(null);
-    try {
-      await signIn('demo-role-login', {
-        role,
-        redirect: false,
-      });
-      onClose();
-    } catch (err) {
-      console.error('Demo Login Error:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div 

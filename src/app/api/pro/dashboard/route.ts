@@ -1,13 +1,15 @@
+import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { appointmentDate } from '@/lib/appointment-time';
 
 export async function GET() {
+  const authorization = await requireApiUser(["PARTNER"]);
+  if (authorization.response) return authorization.response;
+
   // Get the logged-in partner's ID from the session
-  const session = await getServerSession(authOptions);
+  const session = { user: authorization.user };
   const sessionUserId = (session?.user as any)?.id;
   if (!sessionUserId || (session?.user as { role?: string })?.role !== 'PARTNER') {
     return NextResponse.json({ error: 'Sign in as a doctor.' }, { status: 401 });
