@@ -28,7 +28,7 @@ function harness(path, globals = {}, dependencies = {}, extra = '') {
   const source = ts.transpileModule(readFileSync(path, 'utf8') + extra, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText;
-  vm.runInNewContext(source, { exports, console, Buffer, URLSearchParams, crypto, process: { env: {} },
+  vm.runInNewContext(source, { exports, console, Buffer, URL, URLSearchParams, crypto, process: { env: {} },
     ...globals, require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
@@ -53,6 +53,89 @@ function text(node) {
 const button = (tree, label) => all(tree, node => node.type === 'button' && text(node).includes(label))[0];
 const response = body => ({ ok: true, status: 200, json: async () => body });
 const payment = harness('src/lib/payment.ts').exports;
+const navigation = harness('src/lib/patient-navigation.ts').exports;
+
+test('staff sessions cannot render patient pages or skip patient sign-in, including booking links', async () => {
+  for (const role of ['ADMIN', 'SUPER_ADMIN', 'PARTNER']) {
+    for (const path of ['/patient/dashboard', '/patient/appointments/bk_test', '/patient/book']) {
+      const redirects = [];
+      const view = harness('src/app/patient/layout.tsx', { window: { location: { search: '?doctor=test&service=srv_doc' } } }, {
+        'next-auth/react': { useSession: () => ({ status: 'authenticated', data: { user: { id: 'staff', role } } }) },
+        'next/navigation': { usePathname: () => path, useRouter: () => ({ replace: url => redirects.push(url) }) },
+        'next/link': 'a', 'lucide-react': new Proxy({}, { get: (_, key) => key }),
+        '@/components/auth/AuthModal': () => null, '@/components/shared/Logo': () => null,
+        '@/lib/patient-navigation': navigation,
+      });
+      const tree = view.render({ children: 'PRIVATE PATIENT CONTENT' });
+      assert.doesNotMatch(text(tree), /PRIVATE PATIENT CONTENT/);
+      await view.flush();
+      assert.equal(redirects.length, 1);
+      const destination = new URL(redirects[0], 'https://homedigo.local');
+      assert.equal(destination.pathname, '/patient/login');
+      assert.equal(destination.searchParams.get('redirect'), path + '?doctor=test&service=srv_doc');
+    }
+  }
+});
+
+test('patient layout allows patient sessions and guest booking but blocks guests on private pages and waits for session loading', async () => {
+  for (const [status, role, path, allowed, redirected] of [
+    ['authenticated', 'PATIENT', '/patient/dashboard', true, false],
+    ['unauthenticated', null, '/patient/book', true, false],
+    ['unauthenticated', null, '/patient/appointments', false, true],
+    ['loading', null, '/patient/book', false, false],
+  ]) {
+    const redirects = [];
+    const view = harness('src/app/patient/layout.tsx', { window: { location: { search: '' } } }, {
+      'next-auth/react': { useSession: () => ({ status, data: role ? { user: { id: 'patient', role } } : null }) },
+      'next/navigation': { usePathname: () => path, useRouter: () => ({ replace: url => redirects.push(url) }) },
+      'next/link': 'a', 'lucide-react': new Proxy({}, { get: (_, key) => key }),
+      '@/components/auth/AuthModal': () => null, '@/components/shared/Logo': () => null,
+      '@/lib/patient-navigation': navigation,
+    });
+    assert.equal(text(view.render({ children: 'PATIENT CONTENT' })).includes('PATIENT CONTENT'), allowed);
+    await view.flush();
+    assert.equal(redirects.length > 0, redirected);
+  }
+});
+
+test('patient login shows the form for every staff role instead of redirecting it back to the patient portal', async () => {
+  for (const role of ['ADMIN', 'SUPER_ADMIN', 'PARTNER', 'PATIENT']) {
+    const redirects = [];
+    const view = harness('src/components/auth/PatientSignIn.tsx', {}, {
+      'next-auth/react': { useSession: () => ({ status: 'authenticated', data: { user: { id: 'user', role } } }), getProviders: async () => ({}) },
+      'next/navigation': { useRouter: () => ({ replace: url => redirects.push(url) }), useSearchParams: () => new URLSearchParams('redirect=/patient/appointments/bk_test') },
+      'next/link': 'a', 'next/image': 'img', 'lucide-react': new Proxy({}, { get: (_, key) => key }),
+      '@/components/landing/LandingBrand': () => null, '@/lib/patient-navigation': navigation,
+      './patient-sign-in.module.css': {},
+    });
+    const tree = view.render(); await view.flush();
+    assert.equal(all(tree, n => n.type === 'form').length, role === 'PATIENT' ? 0 : 1);
+    assert.equal(redirects.length, role === 'PATIENT' ? 1 : 0);
+    if (role !== 'PATIENT') assert.match(text(tree), /signed in with a staff account/);
+  }
+});
+
+test('switching from staff to patient requires a refreshed patient session before navigating', async () => {
+  let refreshedRole = 'ADMIN', captured;
+  const redirects = [];
+  const view = harness('src/components/auth/PatientSignIn.tsx', {}, {
+    'next-auth/react': { useSession: () => ({ status: 'authenticated', data: { user: { id: 'staff', role: 'ADMIN' } },
+      update: async () => ({ user: { id: 'user', role: refreshedRole } }) }), getProviders: async () => ({}),
+      signIn: async (_, options) => { captured = options; return { ok: true }; } },
+    'next/navigation': { useRouter: () => ({ replace: url => redirects.push(url) }), useSearchParams: () => new URLSearchParams('redirect=/patient/appointments/bk_test') },
+    'next/link': 'a', 'next/image': 'img', 'lucide-react': new Proxy({}, { get: (_, key) => key }),
+    '@/components/landing/LandingBrand': () => null, '@/lib/patient-navigation': navigation,
+    './patient-sign-in.module.css': {},
+  });
+  view.render(); await view.flush();
+  await all(view.render(), n => n.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.equal(redirects.length, 0);
+  assert.match(text(view.render()), /Please sign in with a patient account/);
+  refreshedRole = 'PATIENT';
+  await all(view.render(), n => n.type === 'form')[0].props.onSubmit({ preventDefault() {} });
+  assert.equal(captured.expectedRole, 'PATIENT');
+  assert.equal(redirects.at(-1), '/patient/appointments/bk_test');
+});
 
 async function bookingView({ draft = false, empty = false, failed = false } = {}) {
   const Checkout = () => null;

@@ -20,7 +20,7 @@ export function patientDestination(value: string | null): string {
     ];
     if (
       url.origin !== "https://homedigo.local" ||
-      !allowed.includes(url.pathname)
+      (!allowed.includes(url.pathname) && !/^\/patient\/appointments\/[A-Za-z0-9_-]+$/.test(url.pathname))
     )
       return fallback;
     return `${url.pathname}${url.search}`;

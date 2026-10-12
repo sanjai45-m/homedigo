@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getProviders, signIn, useSession } from "next-auth/react";
+import { getProviders, signIn, signOut, useSession } from "next-auth/react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -22,13 +22,16 @@ import {
   UserRound,
 } from "lucide-react";
 import LandingBrand from "@/components/landing/LandingBrand";
-import { doctorBookingUrl, patientDestination } from "@/lib/patient-navigation";
+import { doctorBookingUrl, patientDestination, patientSignInUrl } from "@/lib/patient-navigation";
 import styles from "./patient-sign-in.module.css";
 
 export default function PatientSignIn() {
   const router = useRouter();
   const params = useSearchParams();
-  const { status } = useSession();
+  const { data: session, status, update } = useSession();
+  const identity = session?.user as { id?: string; role?: string } | undefined;
+  const isPatient = status === 'authenticated' && identity?.role === 'PATIENT' && Boolean(identity.id);
+  const otherAccount = status === 'authenticated' && Boolean(identity) && !isPatient;
   const target = params.get("doctor")
     ? doctorBookingUrl(params.get("doctor")!)
     : patientDestination(params.get("redirect"));
@@ -51,8 +54,8 @@ export default function PatientSignIn() {
   } | null>(null);
 
   useEffect(() => {
-    if (status === "authenticated") router.replace(target);
-  }, [status, router, target]);
+    if (isPatient) router.replace(target);
+  }, [isPatient, router, target]);
 
   useEffect(() => {
     let active = true;
@@ -115,6 +118,9 @@ export default function PatientSignIn() {
         throw new Error(
           "We couldn’t sign you in. Check your email and password and try again.",
         );
+      const refreshed = await update();
+      const patient = refreshed?.user as { id?: string; role?: string } | undefined;
+      if (patient?.role !== 'PATIENT' || !patient.id) throw new Error('Please sign in with a patient account to continue.');
       router.replace(target);
     } catch (issue) {
       setError(
@@ -126,7 +132,7 @@ export default function PatientSignIn() {
     }
   }
 
-  if (status !== "unauthenticated")
+  if (status === 'loading' || isPatient)
     return (
       <div className={styles.loading} role="status">
         {status === "authenticated"
@@ -236,6 +242,10 @@ export default function PatientSignIn() {
             </p>
           )}
           <form onSubmit={submit} className={styles.form}>
+            {otherAccount && <div className={styles.notice} role="status">
+              <p>You are signed in with a staff account. Sign in with a patient account to open the patient portal. This switches the account used in this browser.</p>
+              <button type="button" disabled={busy} onClick={() => void signOut({ callbackUrl: patientSignInUrl(target) })}>Sign out of staff account</button>
+            </div>}
             <fieldset disabled={busy}>
               {mode === "register" && (
                 <label htmlFor="patient-name">

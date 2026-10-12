@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import { 
   Heart, 
@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import AuthModal from '@/components/auth/AuthModal';
 import Logo from '@/components/shared/Logo';
+import { patientSignInUrl } from '@/lib/patient-navigation';
 
 export default function PatientLayout({
   children,
@@ -30,9 +31,19 @@ export default function PatientLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
+  const router = useRouter();
+  const { data: session, status } = useSession();
+  const identity = session?.user as { id?: string; role?: string } | undefined;
+  const isPatient = status === 'authenticated' && identity?.role === 'PATIENT' && Boolean(identity.id);
+  const canEnter = isPatient || (pathname === '/patient/book' && status === 'unauthenticated');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+
+  useEffect(() => {
+    if (pathname !== '/patient/login' && status !== 'loading' && !canEnter) {
+      router.replace(patientSignInUrl(pathname + window.location.search));
+    }
+  }, [pathname, status, canEnter, router]);
 
   const navItems = [
     { href: '/patient/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -49,6 +60,9 @@ export default function PatientLayout({
 
   // Authentication has its own full-page layout, without patient portal chrome.
   if (pathname === '/patient/login') return <>{children}</>;
+  if (!canEnter) return <div className="p-12 text-center text-teal-800" role="status">
+    {status === 'loading' ? 'Checking your account...' : 'A patient account is required. Opening patient sign-in...'}
+  </div>;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col lg:flex-row">
@@ -111,7 +125,7 @@ export default function PatientLayout({
 
         {/* User Card & Authentication */}
         <div className="p-4 border-t border-slate-100 space-y-3">
-          {session ? (
+          {isPatient && session ? (
             <>
               <div className="flex items-center gap-3 p-2.5 rounded-2xl bg-slate-50 border border-slate-100">
                 <img
