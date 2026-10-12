@@ -65,8 +65,10 @@ npm run build
 
 ### Payment receipt and doctor acceptance
 
-The final booking step opens Google Pay or PhonePe on supported mobile browsers and
-copies the saved payment number for the patient to paste into the app's phone-number payment screen.
+The final booking step opens Google Pay or PhonePe with the saved UPI ID and amount on
+supported mobile browsers. Copying the phone number is a separate manual-payment action.
+Without a configured UPI ID, only the manual-payment action is shown. Desktop users
+are directed to open the booking on their phone rather than silently copying a number.
 Super admins can change it under **Super Admin → Payment Settings**, along with the
 recipient name and optional linked UPI ID. The initial number is **9361557446**.
 Settings are saved in PostgreSQL and used by newly opened payment steps without a redeploy.
@@ -78,6 +80,16 @@ A phone number is not a UPI virtual payment address: recipient/amount prefill re
 the actual linked UPI ID. The optional server environment variables `UPI_PAYEE_ID` and
 `UPI_PAYEE_NAME` supply defaults only until settings are first saved in the portal;
 saved settings take precedence, including a deliberately blank UPI ID.
+Until real details are configured, the initial UPI ID is `homedigo-demo@example`.
+Checkout labels it as a demo that cannot receive payments. Replace it before collecting
+real payments; saving a blank ID in Payment Settings disables direct payment links.
+
+Patients can browse the booking wizard before signing in. The patient-details and
+payment steps include an inline patient sign-in/account-creation form. Payments and
+submission require a patient session. An expired session (HTTP 401) displays that same
+form without navigating away or discarding the receipt and booking selections.
+Saved profiles and addresses are loaded only after patient sign-in; a different account
+clears the previous account's receipt and patient-specific notes.
 
 After paying, the patient uploads a PNG, JPEG or WebP screenshot (maximum 2 MB).
 The request, private database receipt and doctor notification queue entry are stored

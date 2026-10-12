@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { 
@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import { calculateDistanceKm, estimateTravelMinutes, reverseGeocode } from '@/lib/geo';
 import LocationPicker from '@/components/shared/LocationPicker';
-import BookingGate from '@/components/auth/BookingGate';
+import CheckoutSignIn from '@/components/auth/CheckoutSignIn';
 import PaymentCheckout from '@/components/PaymentCheckout';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 
@@ -48,7 +48,7 @@ export default function BookServicePage() {
         <span>Loading Booking Wizard...</span>
       </div>
     }>
-      <BookingGate><BookServiceContent /></BookingGate>
+      <BookServiceContent />
     </Suspense>
   );
 }
@@ -56,12 +56,24 @@ export default function BookServicePage() {
 function BookServiceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { data: session } = useSession();
+  const { data: session, status: sessionStatus } = useSession();
   const initialServiceId = searchParams.get('service') || '';
   const initialDoctorId = searchParams.get('doctor') || '';
 
-  const userId = (session?.user as any)?.id || session?.user?.email || 'usr_pat_001';
+  const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+  const isPatient = sessionStatus === 'authenticated' && sessionUser?.role === 'PATIENT' && Boolean(sessionUser.id);
+  const userId = isPatient ? sessionUser!.id! : '';
   const userEmail = session?.user?.email || '';
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  const [authRevision, setAuthRevision] = useState(0);
+  const [showSignIn, setShowSignIn] = useState(false);
+  const authRequired = !isPatient || needsSignIn;
+  const lastPatientId = useRef('');
+  const restoredDraft = useRef(false);
+  const requestSignIn = () => {
+    setShowSignIn(true);
+    setCheckoutError('Sign in below to continue. Your booking and receipt have been kept.');
+  };
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   const [loading, setLoading] = useState(false);
@@ -86,10 +98,14 @@ function BookServiceContent() {
   const [paymentRef, setPaymentRef] = useState('');
   const [requestKey, setRequestKey] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
+  useEffect(() => {
+    if (showSignIn && authRequired) document.getElementById('booking-sign-in')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [showSignIn, authRequired, currentStep]);
   const draftKey = 'homedigo-payment-draft-' + userId;
   useEffect(() => { setRequestKey(crypto.randomUUID()); }, []);
   const savePaymentDraft = () => {
     setCheckoutError('');
+    if (authRequired) { requestSignIn(); return false; }
     if (!selectedProfileId || !selectedAddressId || (selectedServiceId === 'srv_doc' && !selectedPartnerId)) {
       setCheckoutError('Select your patient, address and doctor before paying.');
       return false;
@@ -137,31 +153,40 @@ function BookServiceContent() {
 
   // Load backend data dynamically from DB
   useEffect(() => {
+    if (sessionStatus === 'loading') return;
+    let active = true;
+    if (userId && lastPatientId.current && lastPatientId.current !== userId) {
+      setPaymentReceipt(''); setPaymentRef(''); setClinicalNotes(''); setRequestKey(crypto.randomUUID());
+      setSelectedProfileId(''); setSelectedAddressId('');
+    }
+    if (userId) lastPatientId.current = userId;
     async function loadData() {
       try {
+        setIsInitialLoading(true);
         const [srvRes, profRes, addrRes, partnerRes] = await Promise.all([
           fetch('/api/services'),
-          fetch(`/api/patient/profiles?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail)}`),
-          fetch(`/api/patient/addresses?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail)}`),
+          userId ? fetch(`/api/patient/profiles?userId=${encodeURIComponent(userId)}`) : Promise.resolve({ json: async () => ({ profiles: [] }) }),
+          userId ? fetch(`/api/patient/addresses?userId=${encodeURIComponent(userId)}`) : Promise.resolve({ json: async () => ({ addresses: [] }) }),
           fetch('/api/admin/partners'),
         ]);
         const srvData = await srvRes.json();
         const profData = await profRes.json();
         const addrData = await addrRes.json();
         const partnerData = await partnerRes.json();
+        if (!active) return;
 
         const loadedServices = srvData.services || [];
         setServices(loadedServices);
         if (loadedServices.length > 0) {
           if (initialServiceId && loadedServices.some((s: any) => s.id === initialServiceId)) {
-            setSelectedServiceId(initialServiceId);
+            setSelectedServiceId(current => current || initialServiceId);
           } else {
-            setSelectedServiceId(loadedServices[0].id);
+            setSelectedServiceId(current => current || loadedServices[0].id);
           }
         }
 
-        const loadedProfiles = profData.profiles || [];
-        const loadedAddresses = addrData.addresses || [];
+        const loadedProfiles = (profData.profiles || []).filter((profile: any) => profile.user_id === userId);
+        const loadedAddresses = (addrData.addresses || []).filter((address: any) => address.user_id === userId);
         setProfiles(loadedProfiles);
         setAddresses(loadedAddresses);
         
@@ -169,11 +194,11 @@ function BookServiceContent() {
         setPartners(availablePartners);
 
         if (loadedProfiles.length > 0) {
-          setSelectedProfileId(loadedProfiles[0].id);
+          setSelectedProfileId(current => loadedProfiles.some((profile: any) => profile.id === current) ? current : loadedProfiles[0].id);
         }
         if (loadedAddresses.length > 0) {
           const firstAddr = loadedAddresses[0];
-          setSelectedAddressId(firstAddr.id);
+          setSelectedAddressId(current => loadedAddresses.some((address: any) => address.id === current) ? current : firstAddr.id);
           if (firstAddr.lat && firstAddr.lng) {
             setPatientCoords({
               lat: Number(firstAddr.lat),
@@ -187,16 +212,16 @@ function BookServiceContent() {
         if (initialDoctorId) {
           const matched = availablePartners.find((p: any) => p.id === initialDoctorId);
           if (matched) {
-            setSelectedPartnerId(matched.id);
+            setSelectedPartnerId(current => current || matched.id);
           } else {
             // Keep the requested doctor; never silently book a different person.
-            setSelectedPartnerId(initialDoctorId);
+            setSelectedPartnerId(current => current || initialDoctorId);
           }
         } else if (availablePartners.length > 0) {
-          setSelectedPartnerId(availablePartners[0].id);
+          setSelectedPartnerId(current => current || availablePartners[0].id);
         }
         try {
-          const draft = JSON.parse(sessionStorage.getItem(draftKey) || 'null');
+          const draft = !restoredDraft.current && userId ? JSON.parse(sessionStorage.getItem(draftKey) || 'null') : null;
           if (draft && Date.now() - draft.savedAt < 24 * 60 * 60 * 1000) {
             setSelectedServiceId(draft.selectedServiceId); setSelectedProfileId(draft.selectedProfileId);
             setSelectedAddressId(draft.selectedAddressId); setSelectedPartnerId(draft.selectedPartnerId);
@@ -204,14 +229,16 @@ function BookServiceContent() {
             setClinicalNotes(draft.clinicalNotes); setRequestKey(draft.requestKey); setCurrentStep(5);
           }
         } catch { /* Ignore an expired or unreadable draft. */ }
+        restoredDraft.current = true;
       } catch (err) {
         console.error('Error loading booking data:', err);
       } finally {
-        setIsInitialLoading(false);
+        if (active) setIsInitialLoading(false);
       }
     }
     loadData();
-  }, [initialDoctorId, initialServiceId, session, userId, userEmail]);
+    return () => { active = false; };
+  }, [initialDoctorId, initialServiceId, sessionStatus, userId, authRevision]);
 
   const handleSelectAddress = (addrId: string) => {
     setSelectedAddressId(addrId);
@@ -227,6 +254,7 @@ function BookServiceContent() {
 
   const handleSaveInlineProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (authRequired) { setShowAddProfileModal(false); requestSignIn(); return; }
     if (!newProfileName) return;
     setSavingProfile(true);
     try {
@@ -260,6 +288,7 @@ function BookServiceContent() {
 
   const handleSaveInlineAddress = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (authRequired) { setShowAddAddressModal(false); requestSignIn(); return; }
     if (!newAddressLine1 || !newPincode) return;
     setSavingAddress(true);
     try {
@@ -341,6 +370,7 @@ function BookServiceContent() {
   const handleFinalCheckout = async () => {
     if (loading) return;
     setCheckoutError('');
+    if (authRequired) { requestSignIn(); return; }
     if (!paymentReceipt) { setCheckoutError('Upload your successful payment receipt before submitting.'); return; }
     if (!selectedService) {
       alert('Please select a healthcare service first.');
@@ -386,6 +416,9 @@ function BookServiceContent() {
       });
 
       const data = await res.json();
+      if (res.status === 401) {
+        setNeedsSignIn(true); requestSignIn(); return;
+      }
       if (!res.ok) {
         setCheckoutError(data.error || 'Could not submit your request. Please retry; do not pay again.');
         return;
@@ -509,6 +542,11 @@ function BookServiceContent() {
       {/* Step Content Box */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-md space-y-6">
         {/* STEP 1: CHOOSE SERVICE */}
+        {authRequired && (currentStep === 2 || currentStep === 5 || showSignIn) && <div id="booking-sign-in" className="scroll-mt-24">
+          {sessionStatus === 'loading' ? <p role="status">Checking your account…</p> : <CheckoutSignIn onSignedIn={() => {
+            setNeedsSignIn(false); setShowSignIn(false); setCheckoutError(''); setAuthRevision(value => value + 1);
+          }} />}
+        </div>}
         {currentStep === 1 && (
           <div className="space-y-6 animate-in fade-in duration-150">
             <div className="border-b border-slate-100 pb-3">
@@ -617,7 +655,7 @@ function BookServiceContent() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowAddProfileModal(true)}
+                  onClick={() => authRequired ? requestSignIn() : setShowAddProfileModal(true)}
                   className="text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 bg-teal-50 hover:bg-teal-100 px-3 py-1 rounded-xl transition-all"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -690,7 +728,7 @@ function BookServiceContent() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => setShowAddProfileModal(true)}
+                    onClick={() => authRequired ? requestSignIn() : setShowAddProfileModal(true)}
                     className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-xs"
                   >
                     + Add First Family Member
@@ -707,7 +745,7 @@ function BookServiceContent() {
                 </label>
                 <button
                   type="button"
-                  onClick={() => setShowAddAddressModal(true)}
+                  onClick={() => authRequired ? requestSignIn() : setShowAddAddressModal(true)}
                   className="text-xs font-bold text-teal-700 hover:text-teal-900 flex items-center gap-1 bg-teal-50 hover:bg-teal-100 px-3 py-1 rounded-xl transition-all"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -788,7 +826,7 @@ function BookServiceContent() {
                   </p>
                   <button
                     type="button"
-                    onClick={() => setShowAddAddressModal(true)}
+                    onClick={() => authRequired ? requestSignIn() : setShowAddAddressModal(true)}
                     className="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs shadow-xs"
                   >
                     + Add Doorstep Address / GPS
@@ -1020,13 +1058,17 @@ function BookServiceContent() {
               </div>
             </div>
 
-            <PaymentCheckout amount={totalAmount} reference={requestKey} receipt={paymentReceipt}
-              onReceipt={setPaymentReceipt} onMethod={setPaymentMethod} beforeOpen={savePaymentDraft} />
+            {!authRequired && (isInitialLoading ? <p role="status">Loading your patient details…</p> : !selectedProfile || !selectedAddress ?
+              <div className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">
+                <p>Select or add your patient profile and visit address before paying.</p>
+                <button type="button" onClick={() => setCurrentStep(2)} className="mt-2 font-bold underline">Choose patient & address</button>
+              </div> : <PaymentCheckout amount={totalAmount} reference={requestKey} receipt={paymentReceipt}
+                onReceipt={setPaymentReceipt} onMethod={setPaymentMethod} beforeOpen={savePaymentDraft} />)}
             <label className="block text-sm font-semibold text-slate-700">
               UPI transaction ID (optional)
               <input value={paymentRef} onChange={e => setPaymentRef(e.target.value)} maxLength={64} className="mt-2 block w-full rounded-xl border border-slate-200 p-3" placeholder="Transaction ID from your receipt" />
             </label>
-            <p className="text-xs text-slate-500">Booking confirmation will be emailed to {userEmail} after the doctor accepts your request.</p>
+            {!authRequired && <p className="text-xs text-slate-500">Booking confirmation will be emailed to {userEmail} after the doctor accepts your request.</p>}
             {checkoutError && <p role="alert" className="text-sm text-red-700">{checkoutError}</p>}
 
           </div>
@@ -1057,7 +1099,7 @@ function BookServiceContent() {
           ) : (
             <button
               onClick={handleFinalCheckout}
-              disabled={loading || !paymentReceipt || !requestKey}
+              disabled={loading || sessionStatus === 'loading' || (!authRequired && (isInitialLoading || !paymentReceipt || !requestKey))}
               className="px-8 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all disabled:opacity-75"
             >
               {loading ? (
@@ -1068,7 +1110,7 @@ function BookServiceContent() {
               ) : (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>Submit Receipt & Request Appointment</span>
+                  <span>{authRequired ? 'Sign in to continue' : 'Submit Receipt & Request Appointment'}</span>
                 </>
               )}
             </button>

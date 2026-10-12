@@ -1,8 +1,9 @@
 export const PAYMENT_PHONE = '9361557446';
+export const DEMO_UPI_ID = 'homedigo-demo@example';
 export const MAX_RECEIPT_BYTES = 2 * 1024 * 1024;
 
 export function paymentConfig() {
-  const upiId = process.env.UPI_PAYEE_ID?.trim() || '';
+  const upiId = process.env.UPI_PAYEE_ID?.trim() || DEMO_UPI_ID;
   return {
     phone: PAYMENT_PHONE,
     upiId: /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/.test(upiId) ? upiId : '',
