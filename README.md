@@ -1,5 +1,39 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Google Search setup
+
+The public homepage uses `https://homedigo.vercel.app` for its canonical URL,
+sitemap and HomeDigo structured data. To move to a custom domain, set
+`NEXT_PUBLIC_SITE_URL` to that HTTPS origin in Production and rebuild. Configure
+permanent redirects from the old domain through your hosting provider when moving.
+Keep `NEXT_PUBLIC_APP_URL` aligned for links in appointment emails.
+
+After deploying:
+
+1. Add `https://homedigo.vercel.app/` as a URL-prefix property in
+   [Google Search Console](https://search.google.com/search-console).
+2. Select HTML tag verification and put only its `content` value in the Production
+   environment variable `GOOGLE_SITE_VERIFICATION`. Redeploy, then click Verify.
+   Skip this step if the property is already verified by another method.
+3. Submit `https://homedigo.vercel.app/sitemap.xml` in Search Console's Sitemaps panel.
+4. Inspect `https://homedigo.vercel.app/` with URL Inspection, run the live test,
+   and request indexing. Check that production is publicly accessible and the
+   host does not send an `X-Robots-Tag: noindex` header.
+5. Monitor indexing and search queries containing `homedigo` in Search Console.
+
+The homepage opts into indexing. Other HTML routes inherit `noindex` so account,
+booking and staff screens are not search landing pages; authentication still
+controls access to private data. New public pages must explicitly opt into
+indexing, define their own canonical URL, and be added to `src/app/sitemap.ts`.
+Vercel previews remain `noindex` and emit an empty sitemap.
+
+The structured data describes only the brand and services already shown on the
+homepage. Keep its contact number and service area aligned with the visible page.
+These changes help Google understand the site; indexing and a first-place ranking
+are not guaranteed. Recrawling can take days to weeks. See Google's
+[site name guidance](https://developers.google.com/search/docs/appearance/site-names)
+and [recrawl instructions](https://developers.google.com/search/docs/crawling-indexing/ask-google-to-recrawl).
+
 ## Appointment confirmation and reminders
 
 Doctors open the appointment from their notification email, review the receipt and click

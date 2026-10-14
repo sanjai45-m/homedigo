@@ -70,8 +70,7 @@ export default function LandingPage() {
           <div className={`${styles.container} ${styles.heroGrid}`}>
             <div className={styles.heroCopy}>
               <span className={styles.eyebrow}>
-                <span className={styles.statusDot} /> A LITTLE CLOSER. A LOT
-                MORE CARE.
+                <span className={styles.statusDot} /> HOMEDIGO. CARE CLOSER TO HOME.
               </span>
               <h1 id="hero-heading">
                 Healthcare
@@ -82,8 +81,9 @@ export default function LandingPage() {
                 <Heart className={styles.heroHeart} aria-hidden="true" />
               </h1>
               <p>
-                Find a doctor by specialty, choose the right expert, and book
-                your appointment. Personal healthcare, in the comfort of home.
+                HomeDigo brings home healthcare to Bengaluru. Find a doctor by
+                specialty and book a home visit, or explore nursing care,
+                physiotherapy and lab tests at home.
               </p>
               <div className={styles.heroActions}>
                 <Link href="#find-doctors" className={styles.primaryButton}>
@@ -156,7 +156,7 @@ export default function LandingPage() {
           <div className={styles.sectionHeading}>
             <div>
               <span className={styles.eyebrow}>CARE, YOUR WAY</span>
-              <h2 id="services-heading">What can we help you with?</h2>
+              <h2 id="services-heading">Home healthcare services</h2>
             </div>
             <p>
               A little support or a path to recovery.

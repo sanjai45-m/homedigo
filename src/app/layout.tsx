@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Libre_Franklin } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
+import { homeDescription, siteName, siteUrl } from '@/lib/seo';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -18,9 +19,15 @@ const libreFranklin = Libre_Franklin({
 });
 
 export const metadata: Metadata = {
-  title: 'HomeDigo — Quality Healthcare Right at Home | Connected Care',
-  description: 'Verified doctors, nurses, physiotherapy, lab tests, and 24/7 ambulance services at your doorstep. Built for patient trust and clinical excellence.',
-  keywords: ['Home healthcare', 'Doctor home visit', 'Nurse at home', 'Wound dressing', 'Elderly care', 'Bangalore home doctor', 'UPI healthcare booking'],
+  metadataBase: new URL(siteUrl),
+  applicationName: siteName,
+  title: { default: siteName, template: `%s | ${siteName}` },
+  description: homeDescription,
+  // Account and staff routes inherit this; public pages opt in explicitly.
+  robots: { index: false, follow: true },
+  verification: {
+    google: process.env.GOOGLE_SITE_VERIFICATION || undefined,
+  },
 };
 
 export default function RootLayout({
