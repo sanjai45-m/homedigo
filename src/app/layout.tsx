@@ -26,7 +26,10 @@ export const metadata: Metadata = {
   // Account and staff routes inherit this; public pages opt in explicitly.
   robots: { index: false, follow: true },
   verification: {
-    google: process.env.GOOGLE_SITE_VERIFICATION || undefined,
+    google: [
+      'uwVaiNQfIu-P34T2FoQ6Mv-YNBq1K4wi35iNnZfSnd0',
+      ...(process.env.GOOGLE_SITE_VERIFICATION ? [process.env.GOOGLE_SITE_VERIFICATION] : []),
+    ],
   },
 };
 

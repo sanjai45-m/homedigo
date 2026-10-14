@@ -12,9 +12,11 @@ After deploying:
 
 1. Add `https://homedigo.vercel.app/` as a URL-prefix property in
    [Google Search Console](https://search.google.com/search-console).
-2. Select HTML tag verification and put only its `content` value in the Production
-   environment variable `GOOGLE_SITE_VERIFICATION`. Redeploy, then click Verify.
-   Skip this step if the property is already verified by another method.
+2. Select HTML tag verification and click Verify after deployment. The owner's
+   supplied public verification token is included in the root layout. Keep it in
+   place after verification. For an additional owner, set their tag's `content`
+   value in the Production environment variable `GOOGLE_SITE_VERIFICATION` and
+   redeploy before verifying; this adds a tag without replacing the existing one.
 3. Submit `https://homedigo.vercel.app/sitemap.xml` in Search Console's Sitemaps panel.
 4. Inspect `https://homedigo.vercel.app/` with URL Inspection, run the live test,
    and request indexing. Check that production is publicly accessible and the
