@@ -1,3 +1,5 @@
+import type { Metadata } from 'next';
+
 // Keep canonical links, structured data and the sitemap on the same public origin.
 // Never use VERCEL_URL: preview deployments must not become canonical URLs.
 export const siteUrl = new URL(
@@ -8,6 +10,25 @@ export const siteName = 'HomeDigo';
 export const homeTitle = 'HomeDigo | Doctor Visits & Home Healthcare in Bengaluru';
 export const homeDescription =
   'Find doctors and book home healthcare in Bengaluru with HomeDigo. Explore doctor home visits, nursing care, physiotherapy and lab sample collection at home.';
+
+const shareTitle = 'HomeDigo | Healthcare at Home';
+const shareDescription = 'Book doctor home visits, nursing care and physiotherapy in Bengaluru. Personal care, in the comfort of your home.';
+export const socialMetadata: Pick<Metadata, 'openGraph' | 'twitter'> = {
+  openGraph: {
+    type: 'website',
+    locale: 'en_IN',
+    siteName,
+    title: shareTitle,
+    description: shareDescription,
+    images: [{ url: '/opengraph-image', width: 1200, height: 630, type: 'image/png', alt: 'HomeDigo — healthcare that comes home' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: shareTitle,
+    description: shareDescription,
+    images: [{ url: '/opengraph-image', alt: 'HomeDigo — healthcare that comes home' }],
+  },
+};
 
 export const isPreview = process.env.VERCEL_ENV === 'preview';
 

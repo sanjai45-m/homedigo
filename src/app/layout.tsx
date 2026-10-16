@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans, Libre_Franklin } from 'next/font/google';
 import './globals.css';
 import AuthProvider from '@/components/auth/AuthProvider';
-import { homeDescription, siteName, siteUrl } from '@/lib/seo';
+import { homeDescription, siteName, siteUrl, socialMetadata } from '@/lib/seo';
 
 const plusJakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -23,6 +23,7 @@ export const metadata: Metadata = {
   applicationName: siteName,
   title: { default: siteName, template: `%s | ${siteName}` },
   description: homeDescription,
+  ...socialMetadata,
   // Account and staff routes inherit this; public pages opt in explicitly.
   robots: { index: false, follow: true },
   verification: {
