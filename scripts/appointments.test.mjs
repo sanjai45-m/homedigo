@@ -51,6 +51,7 @@ function load(path) {
   return exports;
 }
 
+dependencies['@/lib/password-reset-schema'] = load('src/lib/password-reset-schema.ts');
 dependencies['@/lib/api-auth'] = load('src/lib/api-auth.ts');
 const time = load('src/lib/appointment-time.ts');
 dependencies['@/lib/appointment-time'] = time;
@@ -112,7 +113,7 @@ beforeEach(async () => {
   env.CRON_SECRET = 'test-secret';
   delete env.UPI_PAYEE_ID;
   delete env.UPI_PAYEE_NAME;
-  await db.exec(`TRUNCATE payment_settings, appointment_emails, payment_receipts, bookings, users, invoices, addresses, patient_profiles, partner_profiles, services;
+  await db.exec(`TRUNCATE payment_settings, appointment_emails, payment_receipts, bookings, users, invoices, addresses, patient_profiles, partner_profiles, services CASCADE;
     INSERT INTO addresses (id, user_id, address_line1, city) VALUES ('address', 'patient', 'Test address', 'Test city');
     INSERT INTO patient_profiles (id, user_id, full_name) VALUES ('profile', 'patient', 'Test Patient');
     INSERT INTO services VALUES ('service', 'Home Visit', 90, 10, TRUE);

@@ -22,6 +22,7 @@ import styles from '@/components/portals/portal.module.css';
 const superAdminNavItems = [
   { href: '/super-admin/dashboard', label: 'Executive Cockpit', icon: Activity },
   { href: '/super-admin/admins', label: 'Admin Provisioning', icon: ShieldAlert },
+  { href: '/super-admin/password-resets', label: 'Password Reset Approvals', icon: ShieldAlert },
   { href: '/super-admin/specialities', label: 'Doctor Specialities', icon: Sparkles },
   { href: '/super-admin/partners', label: 'Partner Governance', icon: UserCheck },
   { href: '/super-admin/billing', label: 'Platform Billing & Payouts', icon: CreditCard },

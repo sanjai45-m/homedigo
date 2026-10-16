@@ -189,6 +189,19 @@ function sendAppointmentUpdate(params: AppointmentEmailParams, kind: 'request' |
   });
 }
 
+export async function sendPasswordRecoveryEmail(to: string, recovery: { kind: 'code' | 'link'; value: string } | { kind: 'changed' }): Promise<EmailResult> {
+  const subject = recovery.kind === 'code' ? 'Your HomeDigo password reset verification code'
+    : recovery.kind === 'link' ? 'Your admin password reset was approved' : 'Your HomeDigo password was changed';
+  const text = recovery.kind === 'code'
+    ? `Your verification code is ${recovery.value}. It expires in 10 minutes and can be used once. Do not share this code. If you did not request a password reset, ignore this email.`
+    : recovery.kind === 'link'
+    ? `A Super Admin approved your password reset request. Set a new password using this one-time link within 30 minutes: ${recovery.value}\nIf you did not request this, contact your Super Admin.`
+    : 'Your HomeDigo password has been changed and previous sessions have been invalidated. If you did not make this change, contact HomeDigo support or your Super Admin immediately.';
+  return sendEmail({ to, subject, text, html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:24px">
+    <h2>${escapeHtml(subject)}</h2><p>${escapeHtml(text)}</p>
+    ${recovery.kind === 'link' ? `<p><a href="${escapeHtml(recovery.value)}">Set a new admin password</a></p>` : ''}</div>` });
+}
+
 async function sendEmail(message: { to: string; subject: string; html: string; text?: string }): Promise<EmailResult> {
   if (!isEmailAddress(message.to)) return emailFailure('RECIPIENT_INVALID', 'A valid recipient email address is required.');
   const host = process.env.SMTP_HOST?.trim();

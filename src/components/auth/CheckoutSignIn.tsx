@@ -54,6 +54,7 @@ export default function CheckoutSignIn({ onSignedIn }: { onSignedIn: () => void 
         <button type="submit" className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white sm:col-span-2">{busy ? 'Please wait…' : register ? 'Create account & continue' : 'Sign in & continue'}</button>
       </fieldset>
     </form>
+    {!register && <a href="/reset-password/patient" target="_blank" rel="noopener noreferrer" className="block text-sm font-semibold text-teal-700 underline">Forgot password? Reset in a new tab</a>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
     <button type="button" disabled={busy} onClick={() => { setRegister(!register); setError(''); }} className="text-sm font-bold text-teal-800 underline">{register ? 'Already have an account? Sign in' : 'New patient? Create an account'}</button>
   </section>;

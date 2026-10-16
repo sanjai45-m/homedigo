@@ -277,6 +277,7 @@ export default function PartnerLoginPage() {
                 </>
               )}
             </button>
+            <Link href="/reset-password/partner" className="block text-center text-sm font-semibold text-teal-700">Forgot password?</Link>
           </form>
         ) : (
           /* ================= REGISTER FORM ================= */

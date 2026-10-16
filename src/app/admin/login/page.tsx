@@ -129,6 +129,7 @@ export default function AdminLoginPage() {
           <ArrowRight className="w-4 h-4" />
         </button>
       </form>
+      <Link href="/reset-password/admin" className="mt-4 block text-center text-sm font-semibold text-teal-700">Forgot password? Request approval</Link>
 
       <div className="mt-6 text-center">
         <Link

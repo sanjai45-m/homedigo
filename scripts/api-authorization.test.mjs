@@ -47,7 +47,7 @@ function load(file) {
 const guard = load('src/lib/api-auth.ts').requireApiUser;
 const roles = ['PATIENT', 'PARTNER', 'ADMIN', 'SUPER_ADMIN'];
 const publicRoutes = new Set(['services/route.ts:GET', 'doctors/route.ts:GET', 'specialities/route.ts:GET',
-  'patient/payment/route.ts:GET', 'auth/register/route.ts:POST', 'partner/register/route.ts:POST']);
+  'patient/payment/route.ts:GET', 'auth/register/route.ts:POST', 'auth/password-reset/route.ts:POST', 'partner/register/route.ts:POST']);
 const privateRoutes = [];
 for (const file of readdirSync('src/app/api', { recursive: true }).filter(f => f.endsWith('route.ts'))) {
   const path = file.replaceAll('\\', '/');

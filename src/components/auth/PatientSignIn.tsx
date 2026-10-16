@@ -340,6 +340,7 @@ export default function PatientSignIn() {
                 {!busy && <ArrowRight size={18} aria-hidden="true" />}
               </button>
             </fieldset>
+            {mode === 'login' && <Link href="/reset-password/patient">Forgot password?</Link>}
           </form>
           {google && (
             <>

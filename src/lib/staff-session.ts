@@ -6,6 +6,7 @@ const roles = ['ADMIN', 'SUPER_ADMIN', 'PARTNER'];
 
 export type StaffUser = {
   id: string;
+  issuedAt?: number;
   role: string;
   name?: string | null;
   email?: string | null;
@@ -33,6 +34,7 @@ export async function readStaffSession(authorization: string | null) {
       || token.exp * 1000 <= Date.now()) return null;
     const user: StaffUser = {
       id: token.id, role: String(token.role), name: token.name, email: token.email,
+      issuedAt: typeof token.issuedAt === 'number' ? token.issuedAt : undefined,
       image: typeof token.image === 'string' ? token.image : null,
       department: typeof token.department === 'string' ? token.department : undefined,
       accessLevel: typeof token.accessLevel === 'string' ? token.accessLevel : undefined,

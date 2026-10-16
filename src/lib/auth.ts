@@ -4,6 +4,7 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { executeQuery, isDbConfigured } from './db';
 import { hashPassword, isRetiredSetupPassword, verifyPassword } from './passwords';
 import { randomUUID } from 'node:crypto';
+import { ensurePasswordResetSchema, sessionPredatesPasswordChange } from './password-reset-schema';
 
 export const isGoogleAuthReady = Boolean(
   process.env.GOOGLE_CLIENT_ID &&
@@ -12,6 +13,7 @@ export const isGoogleAuthReady = Boolean(
 );
 
 export async function authenticateCredentials(credentials: { email?: string; password?: string; expectedRole?: string } | undefined) {
+  const issuedAt = Date.now();
   if (!credentials?.email || !credentials?.password) {
     throw new Error('Please provide both email and password.');
   }
@@ -54,6 +56,7 @@ export async function authenticateCredentials(credentials: { email?: string; pas
 
     return {
       id: user.id,
+      issuedAt,
       name: user.name,
       email: user.email,
       role: user.role,
@@ -141,6 +144,7 @@ export const authOptions: NextAuthOptions = {
         token.authVersion = 1;
         token.role = (user as any).role || 'PATIENT';
         token.id = user.id;
+        token.issuedAt = (user as { issuedAt?: number }).issuedAt ?? Date.now();
         token.department = (user as any).department;
         token.accessLevel = (user as any).accessLevel;
       }
@@ -149,9 +153,17 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       // Sessions issued before removal of demo authentication must sign in again.
       if (token.authVersion !== 1 || token.role !== 'PATIENT') return { ...session, user: undefined };
+      try {
+        await ensurePasswordResetSchema();
+        const account = await executeQuery('SELECT password_changed_at FROM users WHERE id = $1', [token.id || token.sub]);
+        if (!account.isConnected || !account.rows[0] || sessionPredatesPasswordChange(token.issuedAt, account.rows[0].password_changed_at)) {
+          return { ...session, user: undefined };
+        }
+      } catch { return { ...session, user: undefined }; }
       if (session.user) {
         (session.user as any).role = token.role || 'PATIENT';
         (session.user as any).id = token.id || token.sub;
+        (session.user as any).issuedAt = token.issuedAt;
         (session.user as any).department = token.department;
         (session.user as any).accessLevel = token.accessLevel;
       }

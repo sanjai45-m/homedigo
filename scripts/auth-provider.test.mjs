@@ -15,6 +15,8 @@ function auth({ connected = true, row, env = {} } = {}) {
   vm.runInNewContext(source, { exports, Buffer, URL, process: { env }, require(name) {
     if (name.startsWith('next-auth/providers/')) return config => config;
     if (name === 'node:crypto') return crypto;
+    if (name === './password-reset-schema') return { ensurePasswordResetSchema: async () => {},
+      sessionPredatesPasswordChange: (issuedAt, changedAt) => Boolean(changedAt && (!issuedAt || issuedAt <= new Date(changedAt).getTime())) };
     if (name === './passwords') return { hashPassword, verifyPassword,
       isRetiredSetupPassword: password => ['SuperAdmin@2026', 'Partner@123'].includes(password) };
     if (name === './db') return { isDbConfigured: connected, executeQuery: async (sql, args) => {
@@ -61,6 +63,12 @@ test('staff credentials and legacy staff cookies cannot create a shared patient 
     assert.equal((await options.callbacks.session({ session: { user: {} }, token: { authVersion: 1, role, id: 'staff' } })).user, undefined);
   }
   assert.equal(await options.callbacks.signIn({ user: { role: 'PATIENT' }, account: { provider: 'credentials-login' } }), true);
+});
+
+test('patient session becomes invalid after a password reset', async () => {
+  const options = auth({ row: { id: 'patient', role: 'PATIENT', password_changed_at: new Date().toISOString() } });
+  const session = await options.callbacks.session({ session: { user: {} }, token: { authVersion: 1, role: 'PATIENT', id: 'patient', issuedAt: 1 } });
+  assert.equal(session.user, undefined);
 });
 test('Google sign-in requires a verified email and cannot grant access to a privileged account', async () => {
   const options = auth({ row: { id: 'root', role: 'SUPER_ADMIN' } });

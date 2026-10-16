@@ -19,6 +19,7 @@ function load(file, dependencies, globals = {}) {
   return exports;
 }
 const sessions = load('src/lib/staff-session.ts', { 'next-auth/jwt': jwt });
+const schema = load('src/lib/password-reset-schema.ts', { './db': { executeQuery: async () => ({ isConnected: true, rows: [] }) } });
 const staff = { id: 'admin-a', role: 'ADMIN', name: 'Admin A', email: 'admin@example.test' };
 
 test('staff tokens reject tampering, expired sessions and patient-cookie tokens', async () => {
@@ -44,6 +45,7 @@ test('API identity comes from the current tab; legacy staff cookies cannot autho
     'next/headers': { headers: async () => requestHeaders },
     'next-auth/next': { getServerSession: async () => cookieSession },
     '@/lib/auth': { authOptions: {} }, '@/lib/staff-session': sessions,
+    '@/lib/password-reset-schema': schema,
     '@/lib/db': { executeQuery: async () => ({ isConnected: true, rows: record ? [record] : [] }) },
   });
   assert.equal((await requireApiUser(['SUPER_ADMIN'])).response.status, 401);
@@ -52,6 +54,8 @@ test('API identity comes from the current tab; legacy staff cookies cannot autho
   assert.equal((await requireApiUser(['ADMIN'])).user.id, 'admin-a');
   assert.equal((await requireApiUser(['SUPER_ADMIN'])).response.status, 403);
   assert.equal((await requireApiUser(['PARTNER'])).response.status, 403);
+  record.password_changed_at = new Date().toISOString();
+  assert.equal((await requireApiUser(['ADMIN'])).response.status, 401, 'Password reset must invalidate an older staff token');
   record = { id: staff.id, role: 'PARTNER' };
   assert.equal((await requireApiUser(['ADMIN'])).response.status, 401);
   record = null;
@@ -74,6 +78,7 @@ test('staff login requires the matching portal and same origin; it sets no share
       return staff;
     } },
     '@/lib/staff-session': sessions,
+    '@/lib/password-reset-schema': schema,
     '@/lib/db': { executeQuery: async () => ({ isConnected: true, rows: [staff] }) },
   });
   const request = (origin, expectedRole = 'ADMIN', password = 'synthetic-password') => new Request('https://homedigo.test/api/auth/staff', {
