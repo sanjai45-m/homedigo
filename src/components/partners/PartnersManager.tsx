@@ -872,8 +872,10 @@ export default function PartnersManager({ portalRole }: Props) {
                   <label className="block text-slate-700 font-bold mb-1">Home Consultation Fee (₹)</label>
                   <input
                     type="number"
-                    min="100"
-                    step="50"
+                    required
+                    min="1"
+                    max="99999999.99"
+                    step="0.01"
                     value={editForm.consultationFee}
                     onChange={(e) => setEditForm({ ...editForm, consultationFee: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-600 font-medium"
@@ -1200,8 +1202,10 @@ export default function PartnersManager({ portalRole }: Props) {
                   <label className="block text-slate-700 font-bold mb-1">Home Visit Consultation Fee (₹)</label>
                   <input
                     type="number"
-                    min="100"
-                    step="50"
+                    required
+                    min="1"
+                    max="99999999.99"
+                    step="0.01"
                     value={newPartner.consultationFee}
                     onChange={(e) => setNewPartner({ ...newPartner, consultationFee: Number(e.target.value) })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:outline-none focus:border-teal-600 font-medium"

@@ -2,6 +2,7 @@ import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { hashPassword } from '@/lib/passwords';
+import { CONSULTATION_FEE_ERROR, parseConsultationFee } from '@/lib/consultation-fee';
 
 export async function GET() {
   const authorization = await requireApiUser(["ADMIN","SUPER_ADMIN"]);
@@ -63,6 +64,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Name, email, and specialization are required' }, { status: 400 });
     }
 
+    const fee = parseConsultationFee(consultationFee);
+    if (fee === null) return NextResponse.json({ error: CONSULTATION_FEE_ERROR }, { status: 400 });
+
     if (typeof password !== 'string' || password.length < 12) return NextResponse.json({ error: 'Use a password with at least 12 characters.' }, { status: 400 });
     const userId = `usr_pro_${Date.now()}`;
     const profileId = `prof_pro_${Date.now()}`;
@@ -97,7 +101,7 @@ export async function POST(request: Request) {
           specialityId,
           specialization,
           qualifications,
-          Number(consultationFee),
+          fee,
           councilRegNumber || `MCI-${Math.floor(10000 + Math.random() * 90000)}`,
           Number(experienceYears),
           Number(serviceRadiusKm),
@@ -124,7 +128,7 @@ export async function POST(request: Request) {
             speciality_id: specialityId,
             specialization,
             qualifications,
-            consultation_fee: Number(consultationFee),
+            consultation_fee: fee,
             council_reg_number: councilRegNumber,
             experience_years: experienceYears,
             service_radius_km: serviceRadiusKm,
@@ -150,7 +154,7 @@ export async function POST(request: Request) {
       speciality_id: specialityId,
       specialization,
       qualifications,
-      consultation_fee: Number(consultationFee),
+      consultation_fee: fee,
       council_reg_number: councilRegNumber || 'MCI-88912',
       experience_years: experienceYears,
       service_radius_km: serviceRadiusKm,
@@ -204,6 +208,11 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Partner User ID is required' }, { status: 400 });
     }
 
+    const fee = consultationFee === undefined ? null : parseConsultationFee(consultationFee);
+    if (consultationFee !== undefined && fee === null) {
+      return NextResponse.json({ error: CONSULTATION_FEE_ERROR }, { status: 400 });
+    }
+
     if (isDbConfigured) {
       const target = await executeQuery("SELECT id FROM users WHERE id = $1 AND role = 'PARTNER'", [userId]);
       if (!target.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
@@ -248,7 +257,7 @@ export async function PUT(request: Request) {
           partnerType,
           specialityId,
           qualifications,
-          consultationFee !== undefined && consultationFee !== null ? Number(consultationFee) : null,
+          fee,
           councilRegNumber,
           experienceYears !== undefined && experienceYears !== null ? Number(experienceYears) : null,
           serviceRadiusKm !== undefined && serviceRadiusKm !== null ? Number(serviceRadiusKm) : null,
