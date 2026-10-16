@@ -53,6 +53,15 @@ test('login redirects stay on the application origin', async () => {
   }
   assert.equal(await options.callbacks.redirect({ url: '/patient/book', baseUrl: 'https://homedigo.test' }), 'https://homedigo.test/patient/book');
 });
+
+test('staff credentials and legacy staff cookies cannot create a shared patient session', async () => {
+  const options = auth();
+  for (const role of ['ADMIN', 'SUPER_ADMIN', 'PARTNER']) {
+    assert.equal(await options.callbacks.signIn({ user: { role }, account: { provider: 'credentials-login' } }), false);
+    assert.equal((await options.callbacks.session({ session: { user: {} }, token: { authVersion: 1, role, id: 'staff' } })).user, undefined);
+  }
+  assert.equal(await options.callbacks.signIn({ user: { role: 'PATIENT' }, account: { provider: 'credentials-login' } }), true);
+});
 test('Google sign-in requires a verified email and cannot grant access to a privileged account', async () => {
   const options = auth({ row: { id: 'root', role: 'SUPER_ADMIN' } });
   const input = { user: { id: 'google-id', email: 'root@test' }, account: { provider: 'google' }, profile: { email_verified: false } };

@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import { useDoctorTracking } from '@/components/shared/useDoctorTracking';
 import { coordinates } from '@/lib/tracking';
@@ -59,7 +61,7 @@ export default function PartnerVisitCockpitPage() {
   const fetchVisit = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/pro/visits/${visitId}`);
+      const res = await staffFetch(`/api/pro/visits/${visitId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not load appointment.');
       if (data.visit) {
@@ -87,7 +89,7 @@ export default function PartnerVisitCockpitPage() {
   const updateVisitStatus = async (newStatus: string) => {
     try {
       setSaving(true);
-      const res = await fetch(`/api/pro/visits/${visitId}`, {
+      const res = await staffFetch(`/api/pro/visits/${visitId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -117,7 +119,7 @@ export default function PartnerVisitCockpitPage() {
     e.preventDefault();
     try {
       setSaving(true);
-      const res = await fetch(`/api/pro/visits/${visitId}`, {
+      const res = await staffFetch(`/api/pro/visits/${visitId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

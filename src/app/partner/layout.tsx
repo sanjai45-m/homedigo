@@ -1,9 +1,11 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useSession, signOut } from 'next-auth/react';
+import { useSession, signOut } from '@/components/auth/StaffAuthProvider';
 import {
   Calendar,
   Navigation,
@@ -53,7 +55,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     async function loadPartnerProfile() {
       try {
         // Load profile data
-        const res = await fetch('/api/pro/dashboard');
+        const res = await staffFetch('/api/pro/dashboard');
         const data = await res.json();
         if (!res.ok) {
           setAccessError(data.error || 'Unable to access your workspace. Please sign in again.');
@@ -65,7 +67,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
           setPartnerProfile(data.partner);
         }
         // Load real availability from DB
-        const avRes = await fetch('/api/pro/availability');
+        const avRes = await staffFetch('/api/pro/availability');
         const avData = await avRes.json();
         setIsOnline(avData.availability === 'AVAILABLE');
       } catch (e) {
@@ -90,7 +92,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     const nextState = !isOnline;
     setTogglingShift(true);
     try {
-      const res = await fetch('/api/pro/availability', {
+      const res = await staffFetch('/api/pro/availability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

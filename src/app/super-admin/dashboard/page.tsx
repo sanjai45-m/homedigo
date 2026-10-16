@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { RevenueSplit } from '@/components/RevenueSplit';
@@ -47,7 +49,7 @@ export default function SuperAdminDashboardPage() {
     try {
       if (!quiet) setLoading(true);
       const read = async (path: string) => {
-        const response = await fetch(path, { cache: 'no-store' });
+        const response = await staffFetch(path, { cache: 'no-store' });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Dashboard totals could not be loaded. Please retry.');
         return data;

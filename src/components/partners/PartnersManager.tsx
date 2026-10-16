@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -141,8 +143,8 @@ export default function PartnersManager({ portalRole }: Props) {
     try {
       setLoading(true);
       const [partnersRes, specRes] = await Promise.all([
-        fetch('/api/admin/partners'),
-        fetch('/api/specialities'),
+        staffFetch('/api/admin/partners'),
+        staffFetch('/api/specialities'),
       ]);
       const [partnersData, specData] = await Promise.all([
         partnersRes.json(),
@@ -200,7 +202,7 @@ export default function PartnersManager({ portalRole }: Props) {
 
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/admin/partners', {
+      const res = await staffFetch('/api/admin/partners', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -247,7 +249,7 @@ export default function PartnersManager({ portalRole }: Props) {
 
   const handleStatusChange = async (userId: string, newStatus: string) => {
     try {
-      const res = await fetch('/api/admin/partners', {
+      const res = await staffFetch('/api/admin/partners', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, verificationStatus: newStatus }),
@@ -265,7 +267,7 @@ export default function PartnersManager({ portalRole }: Props) {
   const handleDeletePartner = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to remove "${name}" from the platform?`)) return;
     try {
-      const res = await fetch(`/api/admin/partners?id=${id}`, { method: 'DELETE' });
+      const res = await staffFetch(`/api/admin/partners?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setFeedback({ type: 'success', message: `Removed "${name}" from platform.` });
@@ -280,7 +282,7 @@ export default function PartnersManager({ portalRole }: Props) {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      const res = await fetch('/api/admin/partners', {
+      const res = await staffFetch('/api/admin/partners', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPartner),

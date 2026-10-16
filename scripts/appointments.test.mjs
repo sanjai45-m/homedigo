@@ -18,6 +18,9 @@ const dependencies = {
   'node:crypto': crypto,
   'next/server': { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
   'next-auth/next': { getServerSession: async () => session },
+  'next/headers': { headers: async () => new Headers(session?.user?.role && session.user.role !== 'PATIENT'
+    ? { authorization: 'Bearer test-staff-token' } : {}) },
+  '@/lib/staff-session': { readStaffSession: async () => session },
   '@/lib/auth': { authOptions: {} },
   nodemailer: { createTransport: () => ({ sendMail: async message => {
     if (smtpFails === true || smtpFails === message.to) throw Object.assign(new Error('SMTP test failure'), { code: 'ETIMEDOUT' });

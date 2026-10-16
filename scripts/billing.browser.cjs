@@ -7,12 +7,13 @@ const assert = require('node:assert/strict');
   const browser = await chromium.launch({ headless: true, executablePath: process.env.BROWSER_EXECUTABLE || undefined });
   try {
     const context = await browser.newContext();
+    await context.addInitScript(() => sessionStorage.setItem('homedigo.staff.super-admin', 'synthetic-super-token'));
     let verified = false;
     const errors = [];
     await context.route('**/api/**', async route => {
       const path = new URL(route.request().url()).pathname;
       let body = {};
-      if (path === '/api/auth/session') body = { user: { id: 'super', role: 'SUPER_ADMIN', name: 'Audit Test' }, expires: '2099-01-01T00:00:00Z' };
+      if (path === '/api/auth/staff') body = { user: { id: 'super', role: 'SUPER_ADMIN', name: 'Audit Test' }, expires: new Date(Date.now() + 3600000).toISOString() };
       else if (path === '/api/super-admin/stats') body = { metrics: { totalGmv: 99999, totalAdmins: 1, totalPartners: 1, totalPatients: 1 } };
       else if (path === '/api/super-admin/billing') body = {
         summary: { grossRevenue: verified ? 1000 : 0, platformCommission: verified ? 100 : 0,

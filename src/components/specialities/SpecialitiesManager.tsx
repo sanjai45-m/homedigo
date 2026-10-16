@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
@@ -92,7 +94,7 @@ export default function SpecialitiesManager({ portalRole }: Props) {
   const fetchSpecialities = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/specialities');
+      const res = await staffFetch('/api/specialities');
       const data = await res.json();
       if (data.specialities) {
         setSpecialities(data.specialities);
@@ -136,7 +138,7 @@ export default function SpecialitiesManager({ portalRole }: Props) {
     try {
       if (editingSpec) {
         // Update
-        const res = await fetch('/api/specialities', {
+        const res = await staffFetch('/api/specialities', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -156,7 +158,7 @@ export default function SpecialitiesManager({ portalRole }: Props) {
         }
       } else {
         // Create
-        const res = await fetch('/api/specialities', {
+        const res = await staffFetch('/api/specialities', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -187,7 +189,7 @@ export default function SpecialitiesManager({ portalRole }: Props) {
     }
 
     try {
-      const res = await fetch(`/api/specialities?id=${id}`, { method: 'DELETE' });
+      const res = await staffFetch(`/api/specialities?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         fetchSpecialities();

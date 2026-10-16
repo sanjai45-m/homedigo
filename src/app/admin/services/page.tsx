@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import { HOMEDIGO_REVENUE_PERCENT } from '@/lib/revenue';
 
 import React, { useState, useEffect } from 'react';
@@ -55,7 +57,7 @@ export default function AdminServicesPage() {
   const fetchServices = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/admin/services');
+      const res = await staffFetch('/api/admin/services');
       const data = await res.json();
       if (data.services) setServices(data.services);
     } catch (e: any) {
@@ -74,7 +76,7 @@ export default function AdminServicesPage() {
     if (!editingService) return;
     try {
       setSaving(true);
-      const res = await fetch('/api/admin/services', {
+      const res = await staffFetch('/api/admin/services', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -108,7 +110,7 @@ export default function AdminServicesPage() {
     e.preventDefault();
     try {
       setSaving(true);
-      const res = await fetch('/api/admin/services', {
+      const res = await staffFetch('/api/admin/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newForm),
@@ -141,7 +143,7 @@ export default function AdminServicesPage() {
   const handleDelete = async (id: string, title: string) => {
     if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
     try {
-      const res = await fetch(`/api/admin/services?id=${id}`, { method: 'DELETE' });
+      const res = await staffFetch(`/api/admin/services?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setFeedback({ type: 'success', message: `Deleted "${title}"` });

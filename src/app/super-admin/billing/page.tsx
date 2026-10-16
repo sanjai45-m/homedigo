@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CreditCard,
@@ -57,7 +59,7 @@ export default function SuperAdminBillingPage() {
     fetching.current = true;
     try {
       if (!quiet) setLoading(true);
-      const res = await fetch('/api/super-admin/billing', { cache: 'no-store' });
+      const res = await staffFetch('/api/super-admin/billing', { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Billing could not be loaded. Please retry.');
       setError('');

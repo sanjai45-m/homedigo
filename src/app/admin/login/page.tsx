@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import { signIn } from '@/components/auth/StaffAuthProvider';
 import Link from 'next/link';
 import {
   ShieldCheck,

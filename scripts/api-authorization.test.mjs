@@ -13,6 +13,8 @@ let session, offline = false, queries = [];
 const dependencies = {
   'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
   'next-auth/next': { getServerSession: async () => session },
+  'next/headers': { headers: async () => authHeaders() },
+  '@/lib/staff-session': { readStaffSession: async () => session },
   '@/lib/auth': { authOptions: {} },
   'node:crypto': crypto,
   crypto,
@@ -49,7 +51,7 @@ const publicRoutes = new Set(['services/route.ts:GET', 'doctors/route.ts:GET', '
 const privateRoutes = [];
 for (const file of readdirSync('src/app/api', { recursive: true }).filter(f => f.endsWith('route.ts'))) {
   const path = file.replaceAll('\\', '/');
-  if (path.startsWith('auth/[...nextauth]') || path.startsWith('cron/')) continue;
+  if (path.startsWith('auth/[...nextauth]') || path.startsWith('auth/staff/') || path.startsWith('cron/')) continue;
   const code = readFileSync('src/app/api/' + path, 'utf8');
   const ast = ts.createSourceFile(path, code, ts.ScriptTarget.Latest, true);
   for (const node of ast.statements) {
@@ -66,9 +68,16 @@ for (const file of readdirSync('src/app/api', { recursive: true }).filter(f => f
     privateRoutes.push({ name, method: node.name.text, allowed, handler: load('src/app/api/' + path)[node.name.text] });
   }
 }
-const req = (method = 'GET', body, query = '') => new Request('https://homedigo.test/api/resource' + query, {
-  method, ...(body ? { body: JSON.stringify(body), headers: { 'Content-Type': 'application/json' } } : {}),
-});
+function authHeaders() {
+  return new Headers(session?.user?.role && session.user.role !== 'PATIENT' ? { authorization: 'Bearer test-staff-token' } : {});
+}
+const req = (method = 'GET', body, query = '') => {
+  const headers = authHeaders();
+  headers.set('Content-Type', 'application/json');
+  return new Request('https://homedigo.test/api/resource' + query, {
+    method, headers, ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+};
 const context = { params: Promise.resolve({ id: 'visit' }) };
 before(async () => {
   await db.exec(`

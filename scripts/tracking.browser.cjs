@@ -79,6 +79,7 @@ const record = (name, expected, actual) => {
       const browserContext = await browser.newContext({ viewport: { width: 1440, height: 1000 },
         geolocation: { latitude: 12.99, longitude: 80.20 }, permissions: ['geolocation'] });
       const page = await browserContext.newPage();
+      if (role === 'PARTNER') await page.addInitScript(() => sessionStorage.setItem('homedigo.staff.partner', 'synthetic-partner-token'));
       page.setDefaultTimeout(15000);
       page.setDefaultNavigationTimeout(20000);
       const state = { rejectGps: false, missingPatient: false, pageErrors: [] };
@@ -87,7 +88,7 @@ const record = (name, expected, actual) => {
         const url = new URL(route.request().url());
         const method = route.request().method();
         let body = {}, status = 200;
-        if (url.pathname === '/api/auth/session') body = { user: { id: role === 'PARTNER' ? 'doctor' : 'patient', role, name: 'Map Test User', email: 'map-test@example.invalid' }, expires: '2099-01-01T00:00:00.000Z' };
+        if (url.pathname === '/api/auth/session' || url.pathname === '/api/auth/staff') body = { user: { id: role === 'PARTNER' ? 'doctor' : 'patient', role, name: 'Map Test User', email: 'map-test@example.invalid' }, expires: new Date(Date.now() + 3600000).toISOString() };
         else if (url.pathname.endsWith('/location')) {
           if (state.rejectGps && method === 'POST') { status = 503; body = { error: 'Simulated location storage failure' }; }
           else {

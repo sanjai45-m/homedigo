@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import { useEffect, useRef, useState } from 'react';
 import { coordinates } from '@/lib/tracking';
 
@@ -47,7 +49,7 @@ export function useDoctorTracking(visitId: string, status: string, onUpdate: (da
           const timeout = setTimeout(() => abort.abort(), 10000);
           let response;
           try {
-            response = await fetch(`/api/pro/visits/${encodeURIComponent(visitId)}/location`, {
+            response = await staffFetch(`/api/pro/visits/${encodeURIComponent(visitId)}/location`, {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...point, accuracy: position.coords.accuracy }), signal: abort.signal,
             });

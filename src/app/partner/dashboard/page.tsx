@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
@@ -50,7 +52,7 @@ export default function PartnerDashboardPage() {
   const fetchDashboard = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/pro/dashboard');
+      const res = await staffFetch('/api/pro/dashboard');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Could not load appointments.');
       if (data.partner) setPartner(data.partner);

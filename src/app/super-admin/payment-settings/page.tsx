@@ -1,7 +1,9 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import { useEffect, useState } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession } from '@/components/auth/StaffAuthProvider';
 import Link from 'next/link';
 import { CreditCard, Loader2, Save } from 'lucide-react';
 import type { PaymentSettings } from '@/lib/payment-settings';
@@ -18,7 +20,7 @@ export default function PaymentSettingsPage() {
   async function loadSettings() {
     setLoading(true); setError('');
     try {
-      const response = await fetch('/api/super-admin/payment-settings', { cache: 'no-store' });
+      const response = await staffFetch('/api/super-admin/payment-settings', { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not load payment settings.');
       setSettings(data.settings);
@@ -32,7 +34,7 @@ export default function PaymentSettingsPage() {
     if (saving || !settings) return;
     setSaving(true); setError(''); setMessage('');
     try {
-      const response = await fetch('/api/super-admin/payment-settings', {
+      const response = await staffFetch('/api/super-admin/payment-settings', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings),
       });
       const data = await response.json();

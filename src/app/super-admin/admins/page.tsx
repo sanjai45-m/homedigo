@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import {
   ShieldAlert,
@@ -50,6 +52,7 @@ export default function SuperAdminAdminsPage() {
     name: string;
     email: string;
     password: string;
+    loginUrl: string;
     department: string;
     accessLevel: string;
   } | null>(null);
@@ -80,7 +83,7 @@ export default function SuperAdminAdminsPage() {
   const fetchAdmins = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/super-admin/admins');
+      const res = await staffFetch('/api/super-admin/admins');
       const data = await res.json();
       if (data.admins) setAdmins(data.admins);
     } catch (e) {
@@ -101,7 +104,7 @@ export default function SuperAdminAdminsPage() {
 
     try {
       setSaving(true);
-      const res = await fetch('/api/super-admin/admins', {
+      const res = await staffFetch('/api/super-admin/admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newAdmin),
@@ -113,6 +116,7 @@ export default function SuperAdminAdminsPage() {
           name: data.admin.name,
           email: data.admin.email,
           password: data.admin.plainPassword || newAdmin.password || 'Admin@2026',
+          loginUrl: new URL('/admin/login', window.location.origin).href,
           department: data.admin.department || newAdmin.department,
           accessLevel: data.admin.access_level || newAdmin.accessLevel,
         });
@@ -140,7 +144,7 @@ export default function SuperAdminAdminsPage() {
   const handleDeleteAdmin = async (id: string, name: string) => {
     if (!confirm(`Are you sure you want to revoke admin access for "${name}"? They will no longer be able to log in.`)) return;
     try {
-      const res = await fetch(`/api/super-admin/admins?id=${id}`, { method: 'DELETE' });
+      const res = await staffFetch(`/api/super-admin/admins?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setFeedback({ type: 'success', message: `Revoked access and deleted admin "${name}" from database.` });
@@ -494,10 +498,10 @@ export default function SuperAdminAdminsPage() {
               <div className="pt-2 border-t border-slate-200">
                 <div className="text-[11px] font-bold text-slate-400 uppercase">Admin Login URL</div>
                 <div className="flex items-center justify-between font-mono text-[11px] text-slate-600 mt-0.5">
-                  <span>http://localhost:3000/admin/login</span>
+                  <span className="min-w-0 break-all">{createdCredentials.loginUrl}</span>
                   <button
-                    onClick={() => copyToClipboard('http://localhost:3000/admin/login', 'url')}
-                    className="p-1 text-purple-600 hover:text-purple-800"
+                    onClick={() => copyToClipboard(createdCredentials.loginUrl, 'url')}
+                    className="shrink-0 p-1 text-purple-600 hover:text-purple-800"
                     title="Copy URL"
                   >
                     {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}

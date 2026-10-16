@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import {
@@ -34,8 +36,8 @@ export default function AdminDispatchPage() {
     try {
       setLoading(true);
       const [dispatchRes, partnerRes] = await Promise.all([
-        fetch('/api/admin/dispatch').then((r) => r.json()),
-        fetch('/api/admin/partners').then((r) => r.json()),
+        staffFetch('/api/admin/dispatch').then((r) => r.json()),
+        staffFetch('/api/admin/partners').then((r) => r.json()),
       ]);
 
       if (dispatchRes.bookings) {
@@ -64,7 +66,7 @@ export default function AdminDispatchPage() {
     if (!targetPartner) return;
 
     try {
-      const res = await fetch('/api/admin/dispatch', {
+      const res = await staffFetch('/api/admin/dispatch', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

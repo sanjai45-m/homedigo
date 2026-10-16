@@ -1,6 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { staffFetch } from '@/lib/staff-client';
+
+import { useEffect, useState } from 'react';
 
 type ReviewVisit = {
   id: string; patient_name: string; patient_age?: number; patient_gender?: string;
@@ -12,14 +14,37 @@ type ReviewVisit = {
 export default function PaymentReview({ visit, onAccepted }: { visit: ReviewVisit; onAccepted: (visit: ReviewVisit) => void }) {
   const [verified, setVerified] = useState(false);
   const [receiptLoaded, setReceiptLoaded] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const canReview = !visit.doctor_confirmed_at && ['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(visit.status);
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | undefined;
+    setReceiptUrl(null);
+    setReceiptLoaded(false);
+    setVerified(false);
+    if (visit.has_receipt) {
+      void (async () => {
+        try {
+          const response = await staffFetch(`/api/bookings/${encodeURIComponent(visit.id)}/receipt`, { signal: controller.signal });
+          if (!response.ok) throw new Error('Receipt could not be loaded. Refresh and try again.');
+          const blob = await response.blob();
+          if (controller.signal.aborted) return;
+          objectUrl = URL.createObjectURL(blob);
+          setReceiptUrl(objectUrl);
+        } catch (error) {
+          if (!controller.signal.aborted) setError(error instanceof Error ? error.message : 'Receipt could not be loaded.');
+        }
+      })();
+    }
+    return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [visit.id, visit.has_receipt]);
   async function accept() {
     setSaving(true); setError('');
     try {
-      const response = await fetch(`/api/pro/visits/${encodeURIComponent(visit.id)}/confirm`, {
+      const response = await staffFetch(`/api/pro/visits/${encodeURIComponent(visit.id)}/confirm`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paymentVerified: verified }),
       });
       const data = await response.json();
@@ -32,7 +57,7 @@ export default function PaymentReview({ visit, onAccepted }: { visit: ReviewVisi
   async function reject() {
     setSaving(true); setError('');
     try {
-      const response = await fetch(`/api/pro/visits/${encodeURIComponent(visit.id)}`, {
+      const response = await staffFetch(`/api/pro/visits/${encodeURIComponent(visit.id)}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'CANCELLED' }),
       });
       const data = await response.json();
@@ -56,10 +81,10 @@ export default function PaymentReview({ visit, onAccepted }: { visit: ReviewVisi
     <div className="rounded-xl bg-slate-50 p-4 space-y-2 text-sm">
       <p><strong>Amount:</strong> ₹{Number(visit.total_amount).toFixed(2)} · <strong>Status:</strong> {visit.payment_status === 'UNDER_REVIEW' ? 'Awaiting verification' : visit.payment_status}</p>
       <p><strong>Payment app:</strong> {visit.payment_method || 'UPI'} · <strong>Transaction ID:</strong> {visit.payment_ref || 'See receipt'}</p>
-      {visit.has_receipt ? <>
-        <a href={`/api/bookings/${encodeURIComponent(visit.id)}/receipt`} target="_blank" rel="noreferrer" className="inline-block font-bold text-teal-700 underline">Open full payment receipt</a>
-        <img src={`/api/bookings/${encodeURIComponent(visit.id)}/receipt`} alt="Patient payment receipt" onLoad={() => setReceiptLoaded(true)} onError={() => { setReceiptLoaded(false); setError('Receipt could not be loaded. Refresh and try again.'); }} className="max-h-96 max-w-full rounded-lg border border-slate-200 object-contain" />
-      </> : <p>No receipt is available for this appointment.</p>}
+      {receiptUrl ? <>
+        <a href={receiptUrl} target="_blank" rel="noreferrer" className="inline-block font-bold text-teal-700 underline">Open full payment receipt</a>
+        <img src={receiptUrl} alt="Patient payment receipt" onLoad={() => setReceiptLoaded(true)} onError={() => { setReceiptLoaded(false); setError('Receipt could not be loaded. Refresh and try again.'); }} className="max-h-96 max-w-full rounded-lg border border-slate-200 object-contain" />
+      </> : <p>{visit.has_receipt ? 'Loading payment receipt…' : 'No receipt is available for this appointment.'}</p>}
     </div>
     {canReview && <div className="space-y-4">
       {visit.payment_status !== 'PAID' && <label className="flex items-start gap-3 text-sm text-slate-700">

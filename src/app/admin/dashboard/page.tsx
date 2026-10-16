@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -33,8 +35,8 @@ export default function AdminDashboardPage() {
     try {
       setLoading(true);
       const [statsRes, dispatchRes] = await Promise.all([
-        fetch('/api/admin/stats').then((r) => r.json()),
-        fetch('/api/admin/dispatch').then((r) => r.json()),
+        staffFetch('/api/admin/stats').then((r) => r.json()),
+        staffFetch('/api/admin/dispatch').then((r) => r.json()),
       ]);
 
       if (statsRes.metrics) setMetrics(statsRes.metrics);

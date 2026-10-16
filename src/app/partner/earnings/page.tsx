@@ -1,5 +1,7 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import { HOMEDIGO_REVENUE_PERCENT, CLINICIAN_REVENUE_PERCENT } from '@/lib/revenue';
 
 import React, { useState, useEffect } from 'react';
@@ -39,7 +41,7 @@ export default function PartnerEarningsPage() {
   const fetchEarnings = async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/pro/earnings');
+      const res = await staffFetch('/api/pro/earnings');
       const data = await res.json();
       if (data.earnings) {
         setEarnings(data.earnings);

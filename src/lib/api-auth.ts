@@ -2,6 +2,8 @@ import { getServerSession } from 'next-auth/next';
 import { NextResponse } from 'next/server';
 import { authOptions } from '@/lib/auth';
 import { executeQuery } from '@/lib/db';
+import { headers } from 'next/headers';
+import { readStaffSession } from '@/lib/staff-session';
 
 type Role = 'PATIENT' | 'PARTNER' | 'ADMIN' | 'SUPER_ADMIN';
 type ApiUser = { id: string; role: Role };
@@ -13,9 +15,13 @@ export async function requireApiUser(roles: readonly Role[], request?: Request):
     response: NextResponse.json({ error }, { status, headers: { 'Cache-Control': 'private, no-store' } }),
   });
   try {
-    const session = await getServerSession(authOptions);
+    const requestHeaders = request?.headers ?? await headers();
+    const bearer = requestHeaders.get('authorization');
+    const session = bearer ? await readStaffSession(bearer) : await getServerSession(authOptions);
     const identity = session?.user as { id?: string; role?: string } | undefined;
     if (!identity?.id) return deny(401, 'Please sign in.');
+    // A shared browser cookie must never select an identity for a staff tab.
+    if (!bearer && identity.role !== 'PATIENT') return deny(401, 'Please sign in to this portal.');
     if (!roles.includes(identity.role as Role)) return deny(403, 'You do not have access to this resource.');
 
     if (request && !['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {

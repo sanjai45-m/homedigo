@@ -1,8 +1,10 @@
 'use client';
 
+import { staffFetch } from '@/lib/staff-client';
+
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn, useSession } from 'next-auth/react';
+import { signIn, useSession } from '@/components/auth/StaffAuthProvider';
 import Link from 'next/link';
 import {
   Lock,
@@ -91,7 +93,7 @@ export default function PartnerLoginPage() {
     setLoading(true);
 
     try {
-      const regRes = await fetch('/api/partner/register', {
+      const regRes = await staffFetch('/api/partner/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
