@@ -15,18 +15,15 @@ const links = [
 ];
 
 export default function LandingNav() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const role = (session?.user as { role?: string } | undefined)?.role;
-  const dashboard =
-    role === "SUPER_ADMIN"
-      ? "/super-admin/dashboard"
-      : role === "ADMIN"
-        ? "/admin/dashboard"
-        : role === "PARTNER"
-          ? "/partner/dashboard"
-          : "/patient/dashboard";
+  const identity = session?.user as { id?: string; role?: string } | undefined;
+  const isPatient =
+    status === "authenticated" &&
+    identity?.role === "PATIENT" &&
+    Boolean(identity.id);
+  const accountHref = isPatient ? "/patient/dashboard" : "/patient/login";
 
   return (
     <header
@@ -50,9 +47,9 @@ export default function LandingNav() {
         <div className={styles.navActions}>
           <Link
             className={styles.signIn}
-            href={session ? dashboard : "/patient/login"}
+            href={accountHref}
           >
-            {session ? "My account" : "Sign in"}
+            {isPatient ? "My account" : "Sign in"}
           </Link>
           <Link
             className={styles.navBook}
@@ -90,10 +87,10 @@ export default function LandingNav() {
           </a>
         ))}
         <Link
-          href={session ? dashboard : "/patient/login"}
+          href={accountHref}
           onClick={() => setMenuOpen(false)}
         >
-          {session ? "My account" : "Sign in"}
+          {isPatient ? "My account" : "Sign in"}
           <ArrowUpRight size={16} aria-hidden="true" />
         </Link>
       </nav>

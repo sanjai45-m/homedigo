@@ -55,6 +55,33 @@ const response = body => ({ ok: true, status: 200, json: async () => body });
 const payment = harness('src/lib/payment.ts').exports;
 const navigation = harness('src/lib/patient-navigation.ts').exports;
 
+test('desktop and mobile account links require a valid patient identity', () => {
+  const expires = '2099-01-01T00:00:00.000Z';
+  for (const [status, data, expectedLabel, expectedHref] of [
+    ['unauthenticated', null, 'Sign in', '/patient/login'],
+    ['loading', null, 'Sign in', '/patient/login'],
+    // Invalidated cookies can still produce a session object without a user.
+    ['authenticated', { expires }, 'Sign in', '/patient/login'],
+    ['authenticated', { user: { role: 'PATIENT' }, expires }, 'Sign in', '/patient/login'],
+    ...['ADMIN', 'SUPER_ADMIN', 'PARTNER'].map(role => [
+      'authenticated', { user: { id: 'staff', role }, expires }, 'Sign in', '/patient/login',
+    ]),
+    ['authenticated', { user: { id: 'patient', role: 'PATIENT' }, expires }, 'My account', '/patient/dashboard'],
+  ]) {
+    const view = harness('src/components/landing/LandingNav.tsx', {}, {
+      'next-auth/react': { useSession: () => ({ status, data }) },
+      'next/link': 'a', 'lucide-react': new Proxy({}, { get: (_, key) => key }),
+      './LandingBrand': () => null, './landing.module.css': {},
+    });
+    const links = all(view.render(), node => node.type === 'a' && /^(Sign in|My account)$/.test(text(node)));
+    assert.equal(links.length, 2);
+    for (const link of links) {
+      assert.equal(text(link), expectedLabel);
+      assert.equal(link.props.href, expectedHref);
+    }
+  }
+});
+
 test('staff sessions cannot render patient pages or skip patient sign-in, including booking links', async () => {
   for (const role of ['ADMIN', 'SUPER_ADMIN', 'PARTNER']) {
     for (const path of ['/patient/dashboard', '/patient/appointments/bk_test', '/patient/book']) {
