@@ -7,6 +7,36 @@ import { DAY_NAMES, defaultSchedule, scheduleSlots, validateSchedule, type Docto
 import { appointmentDate } from '@/lib/appointment-time';
 import FeedbackToast from '@/components/shared/FeedbackToast';
 
+// Native time inputs follow the device locale. Explicit controls keep AM/PM
+// visible on every browser while preserving the API's HH:mm representation.
+function TimePicker({ label, caption, value, onChange }: {
+  label: string; caption: string; value: string; onChange: (value: string) => void;
+}) {
+  const [hour24, minute] = value.split(':').map(Number);
+  const hour = hour24 % 12 || 12;
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const update = (nextHour: number, nextMinute: number, nextPeriod: string) => {
+    const hours = nextHour % 12 + (nextPeriod === 'PM' ? 12 : 0);
+    onChange(`${String(hours).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`);
+  };
+  const control = 'min-h-11 min-w-0 w-full bg-transparent px-2 text-base text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-teal-600';
+  return <div role="group" aria-label={label} className="min-w-0 space-y-1.5">
+    <p className="text-xs font-medium text-slate-500">{caption}</p>
+    <div className="grid grid-cols-[1fr_auto_1fr_1.2fr] items-center overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <select aria-label={`${label} hour`} className={control} value={hour} onChange={event => update(Number(event.target.value), minute, period)}>
+        {Array.from({ length: 12 }, (_, index) => index + 1).map(number => <option key={number} value={number}>{String(number).padStart(2, '0')}</option>)}
+      </select>
+      <span aria-hidden="true" className="text-slate-400">:</span>
+      <select aria-label={`${label} minute`} className={control} value={minute} onChange={event => update(hour, Number(event.target.value), period)}>
+        {Array.from({ length: 60 }, (_, index) => index).map(number => <option key={number} value={number}>{String(number).padStart(2, '0')}</option>)}
+      </select>
+      <select aria-label={`${label} AM or PM`} className={`${control} border-l border-slate-200 bg-teal-50 font-semibold text-teal-800`} value={period} onChange={event => update(hour, minute, event.target.value)}>
+        <option value="AM">AM</option><option value="PM">PM</option>
+      </select>
+    </div>
+  </div>;
+}
+
 export default function DoctorSchedulePage() {
   const [schedule, setSchedule] = useState(defaultSchedule);
   const [loading, setLoading] = useState(true);
@@ -65,11 +95,12 @@ export default function DoctorSchedulePage() {
           <div className="divide-y divide-slate-100">{[1,2,3,4,5,6,0].map(day => <div key={day} className="grid gap-3 py-4 sm:grid-cols-[150px_1fr]">
             <label className="flex min-h-11 items-center gap-3 font-medium"><input type="checkbox" className="h-5 w-5 accent-teal-700" checked={schedule.days[day].length > 0} onChange={event => updateDay(day, event.target.checked ? [{ start: '09:00', end: '17:00' }] : [])} />{DAY_NAMES[day]}</label>
             <div className="space-y-2">{!schedule.days[day].length && <p className="py-3 text-sm text-slate-500">Day off</p>}
-              {schedule.days[day].map((range, index) => <div key={index} className="flex flex-wrap items-center gap-2">
-                <input aria-label={`${DAY_NAMES[day]} start ${index + 1}`} type="time" className={`${field} min-w-0 flex-1`} value={range.start} onChange={event => updateDay(day, schedule.days[day].map((item, n) => n === index ? { ...item, start: event.target.value } : item))} />
-                <span className="text-slate-400">to</span>
-                <input aria-label={`${DAY_NAMES[day]} end ${index + 1}`} type="time" className={`${field} min-w-0 flex-1`} value={range.end} onChange={event => updateDay(day, schedule.days[day].map((item, n) => n === index ? { ...item, end: event.target.value } : item))} />
-                <button type="button" aria-label={`Remove ${DAY_NAMES[day]} period ${index + 1}`} className="p-3 text-slate-500" onClick={() => updateDay(day, schedule.days[day].filter((_, n) => n !== index))}><Trash2 size={17} /></button>
+              {schedule.days[day].map((range, index) => <div key={index} className="flex items-start gap-2">
+                <div className="grid min-w-0 flex-1 gap-3 lg:grid-cols-2">
+                  <TimePicker label={`${DAY_NAMES[day]} start ${index + 1}`} caption="From" value={range.start} onChange={value => updateDay(day, schedule.days[day].map((item, n) => n === index ? { ...item, start: value } : item))} />
+                  <TimePicker label={`${DAY_NAMES[day]} end ${index + 1}`} caption="To" value={range.end} onChange={value => updateDay(day, schedule.days[day].map((item, n) => n === index ? { ...item, end: value } : item))} />
+                </div>
+                <button type="button" aria-label={`Remove ${DAY_NAMES[day]} period ${index + 1}`} className="mt-6 p-3 text-slate-500" onClick={() => updateDay(day, schedule.days[day].filter((_, n) => n !== index))}><Trash2 size={17} /></button>
               </div>)}
               {schedule.days[day].length === 1 && <button type="button" className="flex min-h-11 items-center gap-1 text-sm text-teal-700" onClick={() => updateDay(day, [...schedule.days[day], { start: '18:00', end: '20:00' }])}><Plus size={16} />Add another period</button>}
             </div></div>)}</div>
