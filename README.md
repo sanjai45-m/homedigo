@@ -270,6 +270,16 @@ Patient booking selects the doctor before the time. Past times, reserved visits 
 
 Schedule storage is added automatically on first use (`doctor_schedules`, booking end and reserved-until timestamps). No Firebase settings are needed for this feature. Patient mobile navigation uses Home, Book visit, Visits and More; notification settings are under “Appointment notifications”.
 
+On phones and tablets, the clinician workspace uses a compact duty control and bottom
+navigation for Visits, Hours, Reminders and Menu. The menu includes earnings, account
+actions and notification settings; other portals are collapsed. Appointment content
+appears before secondary controls, and notifications stay active while their settings
+are collapsed. Foreground push alerts also remain visible over the open menu.
+The visit queue defaults to active appointments, with separate review, completed and
+all-visit filters. `node scripts/partner-mobile.browser.mjs` checks layouts at 320, 390,
+768 and 1440 pixels, menu focus/navigation/resize, duty errors, visit filters and sign-in
+using synthetic data. Screenshots are written to the ignored `coverage/partner-mobile` directory.
+
 Validation: `node --test scripts/appointments.test.mjs scripts/api-authorization.test.mjs scripts/checkout-ui.test.mjs`. With the app running locally, `node scripts/doctor-schedule.browser.mjs` tests synthetic doctor/patient flows at 360, 390 and 1440 pixels. Set `BROWSER_EXECUTABLE` if the Playwright browser is not installed. Browser screenshots are saved under ignored `coverage/schedule/`.
 
 ## Next.js resources

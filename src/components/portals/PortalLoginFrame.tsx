@@ -53,7 +53,7 @@ export default function PortalLoginFrame({ role, title, description, children }:
   const copy = content[role];
   const PortalIcon = role === 'partner' ? Stethoscope : role === 'admin' ? HeartHandshake : ShieldCheck;
   return (
-    <div className={`${styles.theme} ${styles.login}`}>
+    <div className={`${styles.theme} ${styles.login} ${role === 'partner' ? styles.partnerLogin : ''}`}>
       <header className={styles.loginHeader}>
         <PortalBrand />
         <Link href="/"><ArrowLeft size={15} aria-hidden="true" /> Back to home</Link>

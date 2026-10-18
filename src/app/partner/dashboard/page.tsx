@@ -1,341 +1,80 @@
 'use client';
 
-import { staffFetch } from '@/lib/staff-client';
-
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import {
-  Calendar,
-  Navigation,
-  CheckCircle2,
-  Clock,
-  MapPin,
-  ArrowRight,
-  TrendingUp,
-  DollarSign,
-  Activity,
-  ShieldCheck,
-  Stethoscope,
-  ChevronRight,
-  Sparkles,
-  Loader2,
-  Radio,
-  Users,
-} from 'lucide-react';
+import { ArrowRight, CalendarDays, Clock, MapPin, RefreshCw } from 'lucide-react';
+import { staffFetch } from '@/lib/staff-client';
+import FeedbackToast from '@/components/shared/FeedbackToast';
 
-// Shimmer skeleton component
-function Shimmer({ className }: { className?: string }) {
-  return (
-    <div
-      className={`bg-gradient-to-r from-slate-200 via-slate-100 to-slate-200 bg-[length:400%_100%] animate-[shimmer_1.5s_ease-in-out_infinite] rounded-2xl ${className}`}
-    />
-  );
-}
-
-const statusColors: Record<string, string> = {
-  COMPLETED: 'bg-purple-100 text-purple-800 border-purple-200',
-  ON_THE_WAY: 'bg-teal-100 text-teal-800 border-teal-200',
-  IN_PROGRESS: 'bg-amber-100 text-amber-800 border-amber-200',
-  ASSIGNED: 'bg-blue-100 text-blue-800 border-blue-200',
-  ARRIVED: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  CONFIRMED: 'bg-slate-100 text-slate-800 border-slate-200',
-  PENDING: 'bg-orange-100 text-orange-800 border-orange-200',
+type Visit = {
+  id: string; booking_number: string; patient_name: string; service_title: string; address_text: string;
+  status: string; scheduled_date: string; scheduled_time_slot: string; appointment_starts_at?: string;
+  doctor_confirmed_at?: string | null;
 };
+const active = (visit: Visit) => !['COMPLETED', 'CANCELLED'].includes(visit.status);
+const needsReview = (visit: Visit) => !visit.doctor_confirmed_at && ['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(visit.status);
+const labels: Record<string, string> = {
+  PENDING: 'Needs review', ASSIGNED: 'Needs review', CONFIRMED: 'Confirmed', ON_THE_WAY: 'On the way',
+  ARRIVED: 'Arrived', IN_PROGRESS: 'Visit in progress', COMPLETED: 'Completed', CANCELLED: 'Cancelled',
+};
+const priority: Record<string, number> = { IN_PROGRESS: 0, ARRIVED: 1, ON_THE_WAY: 2 };
 
 export default function PartnerDashboardPage() {
-  const [partner, setPartner] = useState<any>(null);
-  const [visits, setVisits] = useState<any[]>([]);
+  const [name, setName] = useState('');
+  const [visits, setVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
-  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
-
-  const fetchDashboard = async () => {
+  const [filter, setFilter] = useState<'ACTIVE' | 'REVIEW' | 'COMPLETED' | 'ALL'>('ACTIVE');
+  async function refresh() {
+    setLoading(true); setNotice('');
     try {
-      setLoading(true);
-      const res = await staffFetch('/api/pro/dashboard');
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Could not load appointments.');
-      if (data.partner) setPartner(data.partner);
-      if (data.visits) setVisits(data.visits);
-    } catch (e) {
-      console.error(e);
-      setNotice(e instanceof Error ? e.message : 'Could not load appointments.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
+      const response = await staffFetch('/api/pro/dashboard');
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not load appointments.');
+      setName(data.partner?.name || ''); setVisits(data.visits || []);
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Could not load appointments. Please retry.'); }
+    finally { setLoading(false); }
+  }
   useEffect(() => {
-    fetchDashboard();
+    let mounted = true;
+    queueMicrotask(() => { if (mounted) void refresh(); });
+    return () => { mounted = false; };
   }, []);
-
-  const activeVisits = visits.filter((v) =>
-    ['PENDING', 'CONFIRMED', 'ON_THE_WAY', 'ASSIGNED', 'IN_PROGRESS', 'ARRIVED'].includes(v.status)
-  );
-  const completedVisits = visits.filter((v) => v.status === 'COMPLETED');
-  const displayedVisits =
-    filter === 'ALL'
-      ? visits
-      : filter === 'ACTIVE'
-      ? activeVisits
-      : completedVisits;
-
-  const activeVisit = visits.find(visit => visit.status === 'ON_THE_WAY');
-
-  return (
-    <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8 animate-fadeIn">
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: 100% 50%; }
-          100% { background-position: -100% 50%; }
-        }
-      `}</style>
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-semibold mb-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Field Operations Cockpit</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
-            <span>Clinician Field Cockpit</span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">
-              Shift Active
-            </span>
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            Welcome back,{' '}
-            <strong className="text-slate-800">{partner?.name || 'Clinician'}</strong>. Manage
-            your doorstep home visits and clinical telemetry.
-          </p>
-        </div>
-
-        <button
-          onClick={fetchDashboard}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-teal-700 font-bold text-xs border border-slate-200 shadow-xs hover:shadow-sm transition-all"
-        >
-          <Radio className="w-4 h-4 text-teal-600" />
-          <span>Refresh Queue</span>
-        </button>
-      </div>
-
-      {/* KPI Cards */}
-      {notice && <p role="status" className="p-4 rounded-xl bg-teal-50 text-teal-900 border border-teal-200 text-sm">{notice}</p>}
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Shimmer key={i} className="h-32" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          {/* Active Now */}
-          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              <span>Active Visits Now</span>
-              <div className="p-2.5 rounded-xl bg-teal-50 text-teal-600 border border-teal-100">
-                <Radio className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-slate-900 mt-3">
-              {activeVisits.length}{' '}
-              <span className="text-sm font-semibold text-slate-400">En-Route / In-Progress</span>
-            </div>
-            <div className="text-xs text-teal-700 mt-1 font-semibold">
-              {activeVisit ? `#${activeVisit.booking_number} currently active` : 'No active visit right now'}
-            </div>
-          </div>
-
-          {/* Total Visits */}
-          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              <span>Total Assigned Visits</span>
-              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-                <Calendar className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-slate-900 mt-3">
-              {visits.length}{' '}
-              <span className="text-sm font-semibold text-slate-400">Patients</span>
-            </div>
-            <div className="text-xs text-blue-700 mt-1 font-semibold">
-              {activeVisits.length} active · {completedVisits.length} completed
-            </div>
-          </div>
-
-          {/* Completed */}
-          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
-            <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              <span>Completed Visits</span>
-              <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="text-3xl font-extrabold text-slate-900 mt-3">
-              {completedVisits.length}{' '}
-              <span className="text-sm font-semibold text-slate-400">Done</span>
-            </div>
-            <div className="text-xs text-purple-700 mt-1 font-semibold">
-              {partner?.completed_visits
-                ? `${partner.completed_visits} lifetime visits`
-                : 'Keep up the great work!'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Active En-Route Callout Banner */}
-      {!loading && activeVisit && (
-        <div className="p-6 md:p-8 rounded-3xl bg-gradient-to-r from-teal-600 via-teal-700 to-emerald-700 text-white shadow-xl shadow-teal-700/10 relative overflow-hidden">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-                <span className="text-xs font-bold uppercase tracking-wider text-teal-100">
-                  Current Active Visit — En Route Now
-                </span>
-                <span className="text-xs font-mono font-bold text-teal-900 bg-teal-100 px-2.5 py-0.5 rounded-md">
-                  {activeVisit.booking_number}
-                </span>
-              </div>
-              <h2 className="text-2xl font-extrabold text-white">{activeVisit.service_title}</h2>
-              <div className="flex flex-wrap items-center gap-4 text-xs text-teal-100 font-medium">
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-4 h-4 text-rose-300" />
-                  <span>{activeVisit.address_text}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-teal-200" />
-                  <span>Slot: {activeVisit.scheduled_time_slot}</span>
-                </div>
-              </div>
-            </div>
-
-            <Link
-              href={`/partner/visit/${activeVisit.id}`}
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-white hover:bg-teal-50 text-teal-900 font-bold text-sm shadow-md shrink-0 transition-all transform hover:-translate-y-0.5"
-            >
-              <Navigation className="w-4 h-4 text-teal-700" />
-              <span>Launch Live Visit Cockpit</span>
-              <ArrowRight className="w-4 h-4 text-teal-700" />
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* Today's Full Queue */}
-      <div className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-teal-600" />
-            <span>All Assigned Patients Queue</span>
-          </h3>
-
-          {/* Filter tabs */}
-          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl text-xs font-bold">
-            {(['ALL', 'ACTIVE', 'COMPLETED'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-lg transition-all ${
-                  filter === f
-                    ? 'bg-white text-teal-700 shadow-xs'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                {f === 'ALL'
-                  ? `All (${visits.length})`
-                  : f === 'ACTIVE'
-                  ? `Active (${activeVisits.length})`
-                  : `Done (${completedVisits.length})`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <Shimmer key={i} className="h-20" />
-            ))}
-          </div>
-        ) : displayedVisits.length === 0 ? (
-          <div className="py-12 text-center text-slate-400">
-            <Users className="w-10 h-10 mx-auto mb-3 text-slate-300" />
-            <p className="font-semibold text-sm">No visits in this category</p>
-            <p className="text-xs mt-1">Check with Admin if you're expecting assignments.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {displayedVisits.map((v) => (
-              <div
-                key={v.id}
-                className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/60 rounded-2xl px-2 transition-colors"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-mono font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-100">
-                      {v.booking_number || v.id}
-                    </span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                        statusColors[v.status] || 'bg-slate-100 text-slate-700 border-slate-200'
-                      }`}
-                    >
-                      {v.status.replace(/_/g, ' ')}
-                    </span>
-                    {(v.status === 'ON_THE_WAY' || v.status === 'IN_PROGRESS') && (
-                      <span className="text-[10px] font-bold text-teal-600 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-ping inline-block" />
-                        LIVE
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="text-sm font-bold text-slate-900">{v.service_title}</h4>
-                  <p className="text-xs text-slate-500">
-                    Patient: <strong className="text-slate-800">{v.patient_name}</strong> ·{' '}
-                    {v.address_text}
-                  </p>
-                  {v.vital_bp && (
-                    <div className="text-[11px] text-teal-700 font-mono mt-1 bg-teal-50/70 p-1.5 rounded-lg border border-teal-100 inline-block">
-                      Vitals: BP {v.vital_bp} | Pulse {v.vital_pulse} | SpO2 {v.vital_spo2} |
-                      Sugar {v.vital_sugar}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-3 shrink-0">
-                  <div className="text-right">
-                    <div className="text-xs text-slate-500">{v.scheduled_date} (IST)</div>
-                    <div className="text-xs text-slate-500">{v.scheduled_time_slot}</div>
-                    <div className="text-base font-extrabold text-slate-900">
-                      ₹{v.total_amount}
-                    </div>
-                  </div>
-                  {!v.doctor_confirmed_at && ['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(v.status) && (
-                    <Link href={`/partner/visit/${v.id}`} className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold">
-                      Review Payment & Accept
-                    </Link>
-                  )}
-                  {v.doctor_confirmed_at && (
-                    <span className="text-xs font-semibold text-teal-700 flex items-center gap-1">
-                      <CheckCircle2 className="w-4 h-4" /> Availability confirmed
-                    </span>
-                  )}
-                  <Link
-                    href={`/partner/visit/${v.id}`}
-                    className="p-2.5 rounded-xl bg-slate-100 hover:bg-teal-50 text-slate-600 hover:text-teal-700 transition-colors"
-                    title="Open Visit Cockpit"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+  const filters = [
+    { value: 'ACTIVE', label: 'Upcoming & active', count: visits.filter(active).length },
+    { value: 'REVIEW', label: 'Needs review', count: visits.filter(needsReview).length },
+    { value: 'COMPLETED', label: 'Completed', count: visits.filter(visit => visit.status === 'COMPLETED').length },
+    { value: 'ALL', label: 'All visits', count: visits.length },
+  ] as const;
+  const displayed = visits.filter(visit => filter === 'ALL' || (filter === 'ACTIVE' ? active(visit) : filter === 'REVIEW' ? needsReview(visit) : visit.status === 'COMPLETED'))
+    .sort((a, b) => {
+      const stage = (priority[a.status] ?? 3) - (priority[b.status] ?? 3);
+      if (stage) return stage;
+      const timeA = Date.parse(a.appointment_starts_at || a.scheduled_date);
+      const timeB = Date.parse(b.appointment_starts_at || b.scheduled_date);
+      return Number.isFinite(timeA) && Number.isFinite(timeB) ? (filter === 'COMPLETED' || filter === 'ALL' ? timeB - timeA : timeA - timeB) : 0;
+    });
+  return <div className="mx-auto max-w-4xl space-y-5">
+    <FeedbackToast message={notice} onDismiss={() => setNotice('')} />
+    <header className="flex items-start justify-between gap-3">
+      <div className="min-w-0"><h1 className="text-3xl font-semibold text-teal-950">Your visits</h1><p className="mt-1 text-sm text-slate-600 break-words">{name ? `Welcome, ${name}.` : 'Your appointment workspace.'}</p></div>
+      <button type="button" aria-label="Refresh visits" disabled={loading} onClick={() => void refresh()} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-teal-700 disabled:opacity-50"><RefreshCw size={18} className={loading ? 'animate-spin' : ''} /><span className="hidden sm:inline">Refresh</span></button>
+    </header>
+    <div role="group" aria-label="Filter visits" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      {filters.map(item => <button key={item.value} type="button" aria-pressed={filter === item.value} onClick={() => setFilter(item.value)} className="flex min-h-14 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-left text-xs font-medium text-slate-600 aria-pressed:border-teal-700 aria-pressed:bg-teal-50 aria-pressed:text-teal-900">
+        <span>{item.label}</span><span className="text-lg font-semibold">{loading ? '?' : item.count}</span>
+      </button>)}
     </div>
-  );
+    <section aria-label="Appointments" aria-busy={loading} className="space-y-3">
+      {loading ? <p role="status" className="rounded-2xl bg-white p-6 text-sm text-slate-500">Loading your visits...</p> : notice && !visits.length ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm"><p>Your appointments could not be loaded.</p><button type="button" onClick={() => void refresh()} className="mt-2 min-h-11 font-semibold text-teal-800 underline">Try again</button></div> : !displayed.length ? <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center"><CalendarDays size={28} className="mx-auto mb-3 text-teal-700" /><h2 className="font-semibold">{filter === 'REVIEW' ? 'No requests waiting for review' : filter === 'ACTIVE' ? 'No upcoming visits' : 'No visits in this category'}</h2><p className="mt-2 text-sm text-slate-500">{filter === 'ACTIVE' ? 'New appointment requests will appear here.' : 'Choose another filter to see your appointments.'}</p></div> : displayed.map(visit => <article key={visit.id} className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="min-w-0 break-words text-base font-semibold text-slate-900">{visit.patient_name}</h2><span className={`rounded-full px-3 py-1 text-xs font-medium ${needsReview(visit) ? 'bg-amber-50 text-amber-900' : visit.status === 'CANCELLED' ? 'bg-rose-50 text-rose-700' : 'bg-teal-50 text-teal-800'}`}>{needsReview(visit) ? 'Needs review' : labels[visit.status] || visit.status.replaceAll('_', ' ')}</span></div>
+        <p className="text-sm text-slate-600">{visit.service_title}</p>
+        <div className="grid gap-2 text-sm text-slate-700 sm:grid-cols-2"><p className="flex items-start gap-2"><CalendarDays size={16} className="mt-0.5 shrink-0 text-teal-700" />{visit.scheduled_date}</p><p className="flex items-start gap-2"><Clock size={16} className="mt-0.5 shrink-0 text-teal-700" /><span>{visit.scheduled_time_slot} <span className="text-xs text-slate-500">IST</span></span></p></div>
+        <p className="flex items-start gap-2 text-sm text-slate-500"><MapPin size={16} className="mt-0.5 shrink-0" /><span className="break-words">{visit.address_text || 'Open appointment for address details'}</span></p>
+        <Link href={`/partner/visit/${encodeURIComponent(visit.id)}`} className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-teal-700 px-4 py-3 text-sm font-semibold text-white sm:ml-auto sm:w-fit">
+          {needsReview(visit) ? 'Review request' : visit.status === 'CANCELLED' ? 'View cancellation' : visit.status === 'COMPLETED' ? 'View visit summary' : 'Open visit'}<ArrowRight size={16} />
+        </Link>
+      </article>)}
+    </section>
+  </div>;
 }

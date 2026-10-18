@@ -129,6 +129,6 @@ export default function PushNotifications({ portal, userId }: { portal: PushPort
       <p className="font-bold">{notice.title}</p><p>{notice.body}</p>
       <a href={notice.path} className="mt-2 inline-block font-bold underline">View appointment</a>
       <button type="button" onClick={() => setNotice(null)} className="ml-4 min-h-11 px-2 text-xs underline">Dismiss</button>
-    </div>, document.body)}
+    </div>, document.querySelector('dialog[open]') || document.body)}
   </section>;
 }

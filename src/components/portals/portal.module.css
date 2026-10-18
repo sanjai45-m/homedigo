@@ -225,6 +225,11 @@
   .loginStory h1 em::before { content: ' '; }
   .loginPanel { padding: 30px; }
 }
+@media (max-width: 1023px) {
+  .partnerLogin .loginStory { display: none; }
+  .partnerLogin .loginGrid { grid-template-columns: 1fr; max-width: 510px; margin-block: 16px 28px; }
+  .partnerLogin .loginEmblem { margin-bottom: 16px; }
+}
 @media (max-width: 767px) {
   .shell { flex-direction: column; }
   .sidebar { width: 100%; height: auto; position: static; overflow: visible; border-right: 0; border-bottom: 1px solid #dfe7dc; }

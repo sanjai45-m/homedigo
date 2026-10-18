@@ -148,7 +148,7 @@ export default function PartnerVisitCockpitPage() {
   if (loading || !visit) {
     return (
       <div className="p-12 text-center text-slate-500 font-medium">
-        Loading live visit cockpit...
+        Loading appointment...
       </div>
     );
   }
@@ -165,7 +165,6 @@ export default function PartnerVisitCockpitPage() {
 
   return (
     <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-8 animate-fadeIn">
-      {review}
       {/* Back button & Title */}
       <div>
         <Link
@@ -173,14 +172,14 @@ export default function PartnerVisitCockpitPage() {
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 mb-3 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Today's Queue</span>
+          <span>Back to visits</span>
         </Link>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
               <HeartPulse className="w-8 h-8 text-teal-600" />
-              <span>Doorstep Visit Execution Cockpit</span>
+              <span>Patient visit</span>
             </h1>
             <p className="text-slate-500 text-sm mt-1">
               Booking <strong className="text-teal-700 font-mono font-bold bg-teal-50 px-2 py-0.5 rounded border border-teal-100">{visit.booking_number}</strong> · {visit.service_title}
@@ -206,6 +205,73 @@ export default function PartnerVisitCockpitPage() {
         </div>
       )}
 
+      {/* Patient & Booking Details Card */}
+      <div className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div>
+            <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Patient Name</div>
+            <div className="text-xl font-extrabold text-slate-900">{visit.patient_name}</div>
+          </div>
+          <div className="flex items-center gap-4">
+            {visit.patient_phone && <a
+              href={`tel:${visit.patient_phone}`}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold border border-emerald-200 transition-colors"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span>Call Patient</span>
+            </a>}
+            <div className="text-right">
+              <div className="text-xs text-slate-400 font-medium">Scheduled Slot</div>
+              <div className="text-sm font-bold text-slate-800">{visit.scheduled_time_slot}</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-xs text-slate-600 space-y-2">
+          <div className="flex items-center gap-2 text-slate-600">
+            <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
+            <span className="font-medium text-slate-800">{visit.address_text}</span>
+          </div>
+          {visit.clinical_instructions && (
+            <div className="mt-2 p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 text-slate-700">
+              <strong className="text-amber-800 block mb-1">Chief Complaint / Special Instructions:</strong>
+              {visit.clinical_instructions}
+            </div>
+          )}
+        </div>
+
+        {/* Workflow Action Steps */}
+        <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => updateVisitStatus('ARRIVED')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              status === 'ARRIVED'
+                ? 'bg-teal-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            1. Doorstep Arrived
+          </button>
+          <button
+            type="button"
+            onClick={() => updateVisitStatus('IN_PROGRESS')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              status === 'IN_PROGRESS'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            2. In-Progress Checkup
+          </button>
+        </div>
+      </div>
+
+      <details className="rounded-2xl border border-slate-200 bg-white p-4">
+        <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-teal-800">Patient details, payment & cancellation</summary>
+        {review}
+      </details>
+
       {/* GPS Journey Control Banner */}
       <div className={`p-5 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
         isTracking
@@ -215,7 +281,7 @@ export default function PartnerVisitCockpitPage() {
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
             <Radio className={`w-4 h-4 ${isTracking ? 'text-teal-600 animate-pulse' : 'text-slate-400'}`} />
-            <span>GPS Live Journey Tracking</span>
+            <span>Share journey location</span>
             {isTracking && currentGps && !gpsError && (
               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-teal-600 text-white animate-pulse">
                 GPS SHARED
@@ -288,77 +354,15 @@ export default function PartnerVisitCockpitPage() {
         />
       </div>
 
-      {/* Patient & Booking Details Card */}
-      <div className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div>
-            <div className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Patient Name</div>
-            <div className="text-xl font-extrabold text-slate-900">{visit.patient_name}</div>
-          </div>
-          <div className="flex items-center gap-4">
-            <a
-              href="tel:+919845012345"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold border border-emerald-200 transition-colors"
-            >
-              <Phone className="w-3.5 h-3.5" />
-              <span>Call Patient</span>
-            </a>
-            <div className="text-right">
-              <div className="text-xs text-slate-400 font-medium">Scheduled Slot</div>
-              <div className="text-sm font-bold text-slate-800">{visit.scheduled_time_slot}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="text-xs text-slate-600 space-y-2">
-          <div className="flex items-center gap-2 text-slate-600">
-            <MapPin className="w-4 h-4 text-rose-500 shrink-0" />
-            <span className="font-medium text-slate-800">{visit.address_text}</span>
-          </div>
-          {visit.clinical_instructions && (
-            <div className="mt-2 p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 text-slate-700">
-              <strong className="text-amber-800 block mb-1">Chief Complaint / Special Instructions:</strong>
-              {visit.clinical_instructions}
-            </div>
-          )}
-        </div>
-
-        {/* Workflow Action Steps */}
-        <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={() => updateVisitStatus('ARRIVED')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              status === 'ARRIVED'
-                ? 'bg-teal-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            1. Doorstep Arrived
-          </button>
-          <button
-            type="button"
-            onClick={() => updateVisitStatus('IN_PROGRESS')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
-              status === 'IN_PROGRESS'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }`}
-          >
-            2. In-Progress Checkup
-          </button>
-        </div>
-      </div>
-
       {/* Digital Vitals Logger & Prescription Form */}
       <form onSubmit={handleSaveVitalsAndComplete} className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/80 shadow-xs space-y-6">
         <div>
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Activity className="w-5 h-5 text-teal-600" />
-            <span>Digital Clinical Vitals Logger</span>
+            <span>Vitals & visit notes</span>
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Log patient baseline biometric telemetry directly into the patient EMR record and invoice summary.
+            Record the patient?s vitals and advice before completing the visit.
           </p>
         </div>
 
@@ -425,7 +429,7 @@ export default function PartnerVisitCockpitPage() {
           />
         </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between pt-4 border-t border-slate-100">
           <div className="flex items-center gap-2 text-xs text-emerald-700 font-semibold">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
             <span>Digital EMR Encryption Verified</span>

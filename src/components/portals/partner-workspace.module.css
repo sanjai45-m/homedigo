@@ -1,0 +1,44 @@
+.shell { min-height: 100dvh; }
+.desktopSidebar { display: flex; flex-direction: column; position: sticky; top: 0; width: 260px; height: 100dvh; flex-shrink: 0; overflow-y: auto; border-right: 1px solid #e1e8dc; background: #fff; }
+.desktopBrand { padding: 25px 20px; border-bottom: 1px solid #edf1e9; }
+.duty { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 16px; background: #f0f6f0; border-bottom: 1px solid #e1e8dc; }
+.dutyLabel { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; }
+.duty button { min-height: 44px; padding: 8px 12px; border: 1px solid #bdd4c3; border-radius: 10px; color: #105c50; background: white; font-size: 12px; font-weight: 600; }
+.duty button:disabled { opacity: .6; }
+.dutyHelp { padding: 12px 18px; font-size: 12px; color: #64736d; line-height: 1.7; }
+.menuLinks { display: grid; gap: 5px; padding: 12px; }
+.menuLinks a { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 12px; border-radius: 10px; font-size: 14px; color: #405b4d; }
+.menuLinks a:hover { background: #edf5ef; }
+.menuLinks a[aria-current='page'] { background: #126e61; color: white; }
+.otherPortals { margin: 8px 18px 20px; border-top: 1px solid #e1e8dc; padding-top: 12px; }
+.otherPortals summary { padding: 12px 0; cursor: pointer; color: #64736d; font-size: 13px; }
+.otherPortals div { display: grid; }
+.otherPortals a { padding: 13px 4px; font-size: 13px; }
+.account { display: grid; grid-template-columns: 36px minmax(0,1fr) 44px; align-items: center; gap: 10px; padding: 16px; border-top: 1px solid #edf1e9; font-size: 13px; }
+.avatar { display: grid; place-items: center; height: 36px; width: 36px; border-radius: 50%; color: #126e61; background: #edf5ef; font-weight: 700; }
+.account button, .mobileHeader button, .menuHeader button { display: grid; place-items: center; min-width: 44px; min-height: 44px; border-radius: 10px; color: #126e61; }
+.notifications { margin-top: 28px; border-top: 1px solid #e1e8dc; padding-top: 8px; scroll-margin-top: 150px; }
+.notifications > summary { min-height: 48px; padding: 14px 0; font-size: 13px; color: #52665b; cursor: pointer; }
+.page > div > div { padding: 0; }
+.mobileTop, .bottomNav { display: none; }
+.dialog { position: fixed; inset: 0 0 0 auto; margin: 0; padding: 0; width: min(360px, 100%); max-width: 100%; height: 100dvh; max-height: 100dvh; border: 0; background: #fff; color: #183c38; overflow-y: auto; overscroll-behavior: contain; }
+.dialog::backdrop { background: #12332e80; }
+.menuPanel { min-height: 100%; padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+.menuHeader { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #e1e8dc; }
+.menuHeader h2 { font-size: 18px; font-weight: 600; }
+.homeLink { display: block; padding: 14px 22px; color: #126e61; font-size: 14px; }
+@media (max-width: 1023px) {
+  .shell { display: block; }
+  .desktopSidebar, .desktopHeader { display: none; }
+  .mobileTop { display: block; position: sticky; top: 0; z-index: 40; }
+  .mobileHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; padding: 8px 16px; background: #fff; border-bottom: 1px solid #edf1e9; }
+  .mobileHeader img { width: 33px; height: 33px; }
+  .mobileHeader a > span { font-size: 23px; }
+  .mobileHeader small { font-size: 8px; margin-top: 2px; }
+  .mobileTop .duty { padding: 4px 16px; }
+  .page { padding: 20px 16px calc(96px + env(safe-area-inset-bottom)); }
+  .page h1 { font-size: 26px; letter-spacing: -.8px; }
+  .bottomNav { position: fixed; bottom: 0; inset-inline: 0; z-index: 50; display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); border-top: 1px solid #dfe7dc; background: #fff; padding: 4px 8px max(4px, env(safe-area-inset-bottom)); }
+  .bottomNav a, .bottomNav button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 56px; font-size: 11px; color: #64736d; border-radius: 10px; }
+  .bottomNav [aria-current='page'] { color: #126e61; background: #edf5ef; font-weight: 700; }
+}

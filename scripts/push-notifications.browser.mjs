@@ -2,7 +2,7 @@
 // No account, receipt, Firebase delivery or production database is used.
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:3100';
+const origin = process.env.TEST_ORIGIN || 'http://localhost:3100';
 
 (async () => {
   const browser = await chromium.launch({ headless: true,
@@ -106,12 +106,21 @@ const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:3100';
     partner.setDefaultTimeout(45000);
     partner.on('pageerror', error => errors.push(error.message));
     await partner.goto(origin + '/partner/dashboard');
+    await partner.locator('summary').filter({ hasText: 'Notification settings' }).click();
     await partner.getByRole('button', { name: 'Enable notifications', exact: true }).click();
     await partner.getByRole('button', { name: 'Disable notifications', exact: true }).waitFor();
     const staffRegistration = requests.find(r => r.path === '/api/push/subscriptions' && r.authorization);
     assert.equal(staffRegistration.authorization, 'Bearer synthetic-partner-session');
     assert.notEqual(JSON.parse(staffRegistration.body).fid, JSON.parse(patientRegistration.body).fid);
-    await partner.getByTitle('Sign Out', { exact: true }).click();
+    await partner.locator('summary').filter({ hasText: 'Notification settings' }).click();
+    await partner.setViewportSize({ width: 390, height: 850 });
+    await partner.getByRole('button', { name: 'Open clinician menu', exact: true }).first().click();
+    await partner.evaluate(() => navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'homedigo:push', data: { title: 'Upcoming visit', body: 'Your visit starts in about 30 minutes.', path: '/partner/visit/test' },
+    } })));
+    await partner.getByRole('dialog').locator('[data-push-notice]').getByText('Upcoming visit', { exact: true }).waitFor();
+    await partner.getByRole('dialog').getByRole('button', { name: 'Dismiss', exact: true }).click();
+    await partner.getByRole('button', { name: 'Sign out', exact: true }).click();
     await partner.waitForURL('**/partner/login');
     assert.ok(requests.some(r => r.path === '/api/push/subscriptions' && r.method === 'DELETE' && r.authorization));
     assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('homedigo.push.patient')).userId), 'patient');
