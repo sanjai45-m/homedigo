@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { staffFetch } from '@/lib/staff-client';
 
 import React, { useState, useEffect } from 'react';
@@ -15,8 +17,6 @@ import {
   Mail,
   X,
   Search,
-  CheckCircle2,
-  AlertCircle,
   Trash2,
   Edit2,
   Stethoscope,
@@ -171,6 +171,7 @@ export default function PartnersManager({ portalRole }: Props) {
   }, []);
 
   const openEditModal = (partner: Partner) => {
+    setFeedback(null);
     setEditingPartner(partner);
     setEditForm({
       name: partner.name || '',
@@ -200,6 +201,7 @@ export default function PartnersManager({ portalRole }: Props) {
     e.preventDefault();
     if (!editingPartner) return;
 
+    setFeedback(null);
     setIsSubmitting(true);
     try {
       const res = await staffFetch('/api/admin/partners', {
@@ -280,6 +282,7 @@ export default function PartnersManager({ portalRole }: Props) {
 
   const handleCreatePartner = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFeedback(null);
     setIsSubmitting(true);
     try {
       const res = await staffFetch('/api/admin/partners', {
@@ -386,7 +389,7 @@ export default function PartnersManager({ portalRole }: Props) {
             <span>Manage Specialities (CRUD)</span>
           </Link>
           <button
-            onClick={() => setIsNewModalOpen(true)}
+            onClick={() => { setFeedback(null); setIsNewModalOpen(true); }}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r ${primaryThemeColor} text-white font-bold text-xs shadow-md ${buttonBadgeColor} transition-all hover:scale-102 active:scale-98`}
           >
             <Plus className="w-4 h-4" />
@@ -396,27 +399,7 @@ export default function PartnersManager({ portalRole }: Props) {
       </div>
 
       {/* Feedback Banner */}
-      {feedback && (
-        <div
-          className={`p-4 rounded-2xl flex items-center justify-between text-xs font-semibold ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-rose-600" />
-            )}
-            <span>{feedback.message}</span>
-          </div>
-          <button onClick={() => setFeedback(null)} className="p-1 hover:opacity-80">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+      <FeedbackToast message={feedback?.message} type={feedback?.type} onDismiss={() => setFeedback(null)} />
 
       {/* Type Filter Pills & Speciality Filter */}
       <div className="space-y-4">

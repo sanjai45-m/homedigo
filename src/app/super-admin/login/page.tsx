@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { signIn } from '@/components/auth/StaffAuthProvider';
@@ -11,7 +13,6 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  AlertCircle
 } from 'lucide-react';
 
 import PortalLoginFrame from '@/components/portals/PortalLoginFrame';
@@ -56,12 +57,7 @@ export default function SuperAdminLoginPage() {
       title="Welcome back."
       description="Sign in to oversee your teams, care network, and platform."
     >
-      {error && (
-        <div role="alert" className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
+      <FeedbackToast message={error} onDismiss={() => setError('')} />
 
       <form className="space-y-5" onSubmit={handleLogin}>
         <div>

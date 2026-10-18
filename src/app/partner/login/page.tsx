@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { staffFetch } from '@/lib/staff-client';
 
 import React, { useState, useEffect } from 'react';
@@ -13,7 +15,6 @@ import {
   EyeOff,
   ArrowRight,
   ShieldCheck,
-  AlertCircle,
   Loader2,
   UserCheck,
   UserPlus,
@@ -182,12 +183,7 @@ export default function PartnerLoginPage() {
 
       {/* Main Card */}
       <div className="space-y-6">
-        {error && (
-          <div role="alert" className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-            <span>{error}</span>
-          </div>
-        )}
+        <FeedbackToast message={error} onDismiss={() => setError('')} />
 
         {successMsg && (
           <div role="status" className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-start gap-3">

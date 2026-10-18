@@ -1,5 +1,7 @@
 "use client";
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { useEffect, useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -231,11 +233,7 @@ export default function PatientSignIn() {
               <Check size={17} aria-hidden="true" />
             </div>
           )}
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
+          <FeedbackToast message={error} onDismiss={() => setError('')} />
           {notice && (
             <p className={styles.notice} role="status">
               {notice}

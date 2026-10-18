@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { 
@@ -34,6 +36,7 @@ export default function SavedAddressesPage() {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const userId = (session?.user as any)?.id || session?.user?.email || 'usr_pat_001';
@@ -65,6 +68,7 @@ export default function SavedAddressesPage() {
     setPincode('560038');
     setLat(null);
     setLng(null);
+    setError('');
     setIsModalOpen(true);
   };
 
@@ -78,6 +82,7 @@ export default function SavedAddressesPage() {
     setPincode(addr.pincode || '560038');
     setLat(addr.lat != null ? Number(addr.lat) : null);
     setLng(addr.lng != null ? Number(addr.lng) : null);
+    setError('');
     setIsModalOpen(true);
   };
 
@@ -100,6 +105,7 @@ export default function SavedAddressesPage() {
   const handleSaveAddress = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!addressLine1 || !pincode) return;
+    setError('');
     setSaving(true);
     try {
       if (editingAddress) {
@@ -120,6 +126,7 @@ export default function SavedAddressesPage() {
           }),
         });
         const data = await res.json();
+        if (!res.ok || !data.address) throw new Error(data.error || 'Could not save address. Please retry.');
         if (data.address) {
           setAddresses((prev) => prev.map((a) => (a.id === editingAddress.id ? data.address : a)));
           setIsModalOpen(false);
@@ -142,13 +149,14 @@ export default function SavedAddressesPage() {
           }),
         });
         const data = await res.json();
+        if (!res.ok || !data.address) throw new Error(data.error || 'Could not save address. Please retry.');
         if (data.address) {
           setAddresses((prev) => [...prev, data.address]);
           setIsModalOpen(false);
         }
       }
     } catch (err) {
-      console.error('Failed to save address:', err);
+      setError(err instanceof Error ? err.message : 'Could not save address. Please retry.');
     } finally {
       setSaving(false);
     }
@@ -158,12 +166,14 @@ export default function SavedAddressesPage() {
     if (!confirm('Are you sure you want to remove this saved doorstep address?')) return;
     setDeletingId(id);
     try {
-      await fetch(`/api/patient/addresses?id=${encodeURIComponent(id)}`, {
+      const res = await fetch(`/api/patient/addresses?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not delete address. Please retry.');
       setAddresses((prev) => prev.filter((a) => a.id !== id));
     } catch (err) {
-      console.error('Failed to delete address:', err);
+      setError(err instanceof Error ? err.message : 'Could not delete address. Please retry.');
     } finally {
       setDeletingId(null);
     }
@@ -172,6 +182,7 @@ export default function SavedAddressesPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
       
+      <FeedbackToast message={error} onDismiss={() => setError('')} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

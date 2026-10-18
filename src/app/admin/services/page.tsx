@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { staffFetch } from '@/lib/staff-client';
 
 import { HOMEDIGO_REVENUE_PERCENT } from '@/lib/revenue';
@@ -10,8 +12,6 @@ import {
   Plus,
   Edit2,
   Trash2,
-  CheckCircle2,
-  AlertCircle,
   Save,
   X,
   Stethoscope,
@@ -75,6 +75,7 @@ export default function AdminServicesPage() {
   const handleSaveEdit = async () => {
     if (!editingService) return;
     try {
+      setFeedback(null);
       setSaving(true);
       const res = await staffFetch('/api/admin/services', {
         method: 'PUT',
@@ -109,6 +110,7 @@ export default function AdminServicesPage() {
   const handleCreateService = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      setFeedback(null);
       setSaving(true);
       const res = await staffFetch('/api/admin/services', {
         method: 'POST',
@@ -173,7 +175,7 @@ export default function AdminServicesPage() {
         </div>
 
         <button
-          onClick={() => setIsNewModalOpen(true)}
+          onClick={() => { setFeedback(null); setIsNewModalOpen(true); }}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all"
         >
           <Plus className="w-4 h-4" />
@@ -182,23 +184,7 @@ export default function AdminServicesPage() {
       </div>
 
       {/* Feedback Alert */}
-      {feedback && (
-        <div
-          className={`p-4 rounded-2xl flex items-center justify-between text-xs font-semibold ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-              : 'bg-rose-50 text-rose-800 border border-rose-200'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
-            <span>{feedback.message}</span>
-          </div>
-          <button onClick={() => setFeedback(null)} className="p-1 hover:opacity-80">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+      <FeedbackToast message={feedback?.message} type={feedback?.type} onDismiss={() => setFeedback(null)} />
 
       {/* Services Grid */}
       {loading ? (
@@ -224,7 +210,7 @@ export default function AdminServicesPage() {
           <h3 className="text-base font-bold text-slate-700">No services found in database</h3>
           <p className="text-xs text-slate-500">Create your first healthcare service item to enable patient booking.</p>
           <button
-            onClick={() => setIsNewModalOpen(true)}
+            onClick={() => { setFeedback(null); setIsNewModalOpen(true); }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-xs"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -250,7 +236,7 @@ export default function AdminServicesPage() {
                       {srv.is_active ? 'ACTIVE' : 'DISABLED'}
                     </span>
                     <button
-                      onClick={() => setEditingService(srv)}
+                      onClick={() => { setFeedback(null); setEditingService(srv); }}
                       className="p-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors"
                       title="Edit Pricing"
                     >

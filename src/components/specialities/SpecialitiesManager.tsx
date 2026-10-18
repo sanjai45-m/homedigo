@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { staffFetch } from '@/lib/staff-client';
 
 import React, { useState, useEffect } from 'react';
@@ -19,7 +21,6 @@ import {
   Brain,
   Shield,
   CheckCircle2,
-  AlertCircle,
   Users,
   RefreshCw,
   X,
@@ -194,7 +195,7 @@ export default function SpecialitiesManager({ portalRole }: Props) {
       if (data.success) {
         fetchSpecialities();
       } else {
-        alert(data.error || 'Failed to delete');
+        setMessage({ type: 'error', text: data.error || 'Failed to delete speciality' });
       }
     } catch (err) {
       console.error('Delete error:', err);
@@ -211,6 +212,7 @@ export default function SpecialitiesManager({ portalRole }: Props) {
 
   return (
     <div className="p-6 md:p-10 max-w-7xl mx-auto space-y-8">
+      <FeedbackToast message={message?.text} type={message?.type} onDismiss={() => setMessage(null)} />
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
         <div>
@@ -416,22 +418,6 @@ export default function SpecialitiesManager({ portalRole }: Props) {
 
             {/* Modal Body */}
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {message && (
-                <div
-                  className={`p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 ${
-                    message.type === 'success'
-                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-800 border border-rose-200'
-                  }`}
-                >
-                  {message.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 shrink-0" />
-                  ) : (
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                  )}
-                  <span>{message.text}</span>
-                </div>
-              )}
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">

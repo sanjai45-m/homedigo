@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { useState, type FormEvent } from 'react';
 import { signIn, useSession } from 'next-auth/react';
 
@@ -55,7 +57,7 @@ export default function CheckoutSignIn({ onSignedIn }: { onSignedIn: () => void 
       </fieldset>
     </form>
     {!register && <a href="/reset-password/patient" target="_blank" rel="noopener noreferrer" className="block text-sm font-semibold text-teal-700 underline">Forgot password? Reset in a new tab</a>}
-    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+    <FeedbackToast message={error} onDismiss={() => setError('')} />
     <button type="button" disabled={busy} onClick={() => { setRegister(!register); setError(''); }} className="text-sm font-bold text-teal-800 underline">{register ? 'Already have an account? Sign in' : 'New patient? Create an account'}</button>
   </section>;
 }

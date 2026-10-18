@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import React, { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { 
@@ -34,6 +36,7 @@ export default function FamilyProfilesPage() {
   const [medicalNotes, setMedicalNotes] = useState('');
   const [emergencyContact, setEmergencyContact] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const userId = (session?.user as any)?.id || session?.user?.email || 'usr_pat_001';
@@ -64,6 +67,7 @@ export default function FamilyProfilesPage() {
     setBloodGroup('O+ Positive');
     setMedicalNotes('');
     setEmergencyContact('+91 98765 43210');
+    setError('');
     setIsModalOpen(true);
   };
 
@@ -76,12 +80,14 @@ export default function FamilyProfilesPage() {
     setBloodGroup(p.blood_group || 'O+ Positive');
     setMedicalNotes(p.medical_notes || '');
     setEmergencyContact(p.emergency_contact || '');
+    setError('');
     setIsModalOpen(true);
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName) return;
+    setError('');
     setSaving(true);
     try {
       if (editingProfile) {
@@ -101,6 +107,7 @@ export default function FamilyProfilesPage() {
           }),
         });
         const data = await res.json();
+        if (!res.ok || !data.profile) throw new Error(data.error || 'Could not save profile. Please retry.');
         if (data.profile) {
           setProfiles((prev) => prev.map((p) => (p.id === editingProfile.id ? data.profile : p)));
           setIsModalOpen(false);
@@ -122,13 +129,14 @@ export default function FamilyProfilesPage() {
           }),
         });
         const data = await res.json();
+        if (!res.ok || !data.profile) throw new Error(data.error || 'Could not save profile. Please retry.');
         if (data.profile) {
           setProfiles((prev) => [...prev, data.profile]);
           setIsModalOpen(false);
         }
       }
     } catch (err) {
-      console.error('Failed to save profile:', err);
+      setError(err instanceof Error ? err.message : 'Could not save profile. Please retry.');
     } finally {
       setSaving(false);
     }
@@ -138,12 +146,14 @@ export default function FamilyProfilesPage() {
     if (!confirm('Are you sure you want to remove this family health profile?')) return;
     setDeletingId(id);
     try {
-      await fetch(`/api/patient/profiles?id=${encodeURIComponent(id)}`, {
+      const res = await fetch(`/api/patient/profiles?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
       });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not delete profile. Please retry.');
       setProfiles((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
-      console.error('Failed to delete profile:', err);
+      setError(err instanceof Error ? err.message : 'Could not delete profile. Please retry.');
     } finally {
       setDeletingId(null);
     }
@@ -152,6 +162,7 @@ export default function FamilyProfilesPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
       
+      <FeedbackToast message={error} onDismiss={() => setError('')} />
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

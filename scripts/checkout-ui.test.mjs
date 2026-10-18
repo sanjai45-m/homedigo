@@ -32,6 +32,7 @@ function harness(path, globals = {}, dependencies = {}, extra = '') {
     ...globals, require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
+      if (name === '@/components/shared/FeedbackToast') return 'feedback-toast';
       if (name === '@/components/PushNotifications') return () => null;
       if (name === '@/lib/push-client') return { disableBrowserPush: async () => {} };
       if (name in dependencies) return dependencies[name];
@@ -48,6 +49,7 @@ function all(node, predicate) {
   return [...(predicate(node) ? [node] : []), ...all(node.props?.children, predicate)];
 }
 function text(node) {
+  if (node?.type === 'feedback-toast') return node.props.message || '';
   if (typeof node === 'string' || typeof node === 'number') return String(node);
   if (Array.isArray(node)) return node.map(text).join('');
   return node && typeof node === 'object' ? text(node.props?.children) : '';

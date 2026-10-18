@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import React, { useState, Suspense } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
@@ -15,7 +17,6 @@ import {
   CheckCircle2, 
   ArrowRight,
   LogOut,
-  AlertCircle
 } from 'lucide-react';
 
 interface AuthModalProps {
@@ -134,14 +135,7 @@ function AuthModalContent({ isOpen, onClose, defaultRole = 'PATIENT' }: AuthModa
           ) : (
             /* Not logged in: Sign in options */
             <>
-              {errorMessage && (
-                <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-start gap-2.5">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-                  <div>
-                    <p>{errorMessage}</p>
-                  </div>
-                </div>
-              )}
+              <FeedbackToast message={errorMessage} onDismiss={() => setErrorMessage(null)} />
 
               {/* Google Sign In (Primary OAuth) */}
               <div>

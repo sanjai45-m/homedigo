@@ -1,5 +1,7 @@
 'use client';
 
+import FeedbackToast from '@/components/shared/FeedbackToast';
+
 import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 
@@ -73,7 +75,7 @@ export default function PasswordReset({ portal }: { portal: 'patient' | 'partner
         ? 'Enter your admin email. A Super Admin must approve your request before a secure reset link is emailed to you.'
         : 'Enter your account email to receive a six-digit verification code.'}</p>}
       {message && <p role="status" className="rounded-xl bg-teal-50 p-3 text-sm text-teal-900">{message}</p>}
-      {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+      <FeedbackToast message={error} onDismiss={() => setError('')} />
       {(stage === 'request' || stage === 'reset') && <form onSubmit={submit} className="space-y-4">
         <fieldset disabled={busy} className="space-y-4">
           {stage === 'request' ? <label className="block text-sm font-medium">Account email
