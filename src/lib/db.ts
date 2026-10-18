@@ -11,6 +11,22 @@ export const isDbConfigured = Boolean(connectionString && !connectionString.incl
  */
 export const sql = connectionString ? neon(connectionString) : null;
 
+// Serialize booking/schedule changes for a doctor. The second statement gets a
+// fresh READ COMMITTED snapshot after the row lock, so simultaneous requests
+// cannot both pass an overlap check against the same free time.
+export async function executePartnerQuery(partnerId: string | null, query: string, params: unknown[]) {
+  if (!sql) return { rows: [], isConnected: false };
+  try {
+    const results = await sql.transaction(tx => [
+      tx.query('SELECT user_id FROM partner_profiles WHERE user_id = $1 FOR UPDATE', [partnerId]),
+      tx.query(query, params),
+    ], { isolationLevel: 'ReadCommitted' });
+    return { rows: results[1], isConnected: true };
+  } catch {
+    return { rows: [], isConnected: false };
+  }
+}
+
 /**
  * Helper to run queries safely with error handling and fallback
  */

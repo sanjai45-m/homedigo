@@ -28,10 +28,11 @@ function harness(path, globals = {}, dependencies = {}, extra = '') {
   const source = ts.transpileModule(readFileSync(path, 'utf8') + extra, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText;
-  vm.runInNewContext(source, { exports, console, Buffer, URL, URLSearchParams, crypto, process: { env: {} },
+  vm.runInNewContext(source, { exports, console, Buffer, URL, URLSearchParams, crypto, AbortController, setInterval: () => 0, clearInterval() {}, window: { addEventListener() {}, removeEventListener() {} }, process: { env: {} },
     ...globals, require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
+      if (name === '@/components/appointments/AppointmentSlots') return { __esModule: true, default: 'appointment-slots', useAppointmentSlots: () => ({ slots: [{ label: '10:00 AM - 11:00 AM', available: true }], error: '', loading: false, retry() {} }) };
       if (name === '@/components/shared/FeedbackToast') return 'feedback-toast';
       if (name === '@/components/PushNotifications') return () => null;
       if (name === '@/lib/push-client') return { disableBrowserPush: async () => {} };
@@ -57,6 +58,7 @@ function text(node) {
 const button = (tree, label) => all(tree, node => node.type === 'button' && text(node).includes(label))[0];
 const response = body => ({ ok: true, status: 200, json: async () => body });
 const payment = harness('src/lib/payment.ts').exports;
+const appointmentTime = harness('src/lib/appointment-time.ts').exports;
 const navigation = harness('src/lib/patient-navigation.ts').exports;
 
 test('desktop and mobile account links require a valid patient identity', () => {
@@ -175,7 +177,7 @@ async function bookingView({ draft = false, empty = false, failed = false } = {}
   const record = { profiles: empty ? [] : [{ id: 'profile', user_id: 'patient', full_name: 'Test Patient' }],
     addresses: empty ? [] : [{ id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' }],
     services: [{ id: 'srv_doc', title: 'Home visit', base_price: '500', visiting_fee: '50' }],
-    doctors: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500' }] };
+    doctors: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500', availability: 'AVAILABLE' }] };
   const view = harness('src/app/patient/book/page.tsx', {
     fetch: async (url, options) => {
       if (options?.method === 'POST') {
@@ -198,7 +200,8 @@ async function bookingView({ draft = false, empty = false, failed = false } = {}
     'next/navigation': { useRouter: () => ({ push: url => state.navigations.push(url) }), useSearchParams: () => new URLSearchParams() },
     'lucide-react': new Proxy({}, { get: (_, key) => key }), '@/lib/geo': {},
     '@/components/shared/LocationPicker': () => null, '@/components/auth/CheckoutSignIn': () => null,
-    '@/components/PaymentCheckout': Checkout, '@/lib/appointment-time': {},
+    '@/components/PaymentCheckout': Checkout, '@/lib/appointment-time': appointmentTime,
+    '@/components/appointments/AppointmentSlots': { __esModule: true, default: 'appointment-slots', useAppointmentSlots: () => ({ slots: [{ label: '10:00 AM - 11:00 AM', available: true }], error: '', loading: false, retry() {} }) },
   }, '\nexport { BookServiceContent };');
   const render = () => view.render({}, view.exports.BookServiceContent);
   render(); await view.flush();
@@ -246,8 +249,8 @@ test('failed or unconfirmed submissions keep the receipt and never show a succes
     assert.deepEqual(state.navigations, []);
     assert.equal(button(tree, 'Submit Receipt').props.disabled, false);
     button(tree, 'Change appointment time').props.onClick();
-    button(render(), 'Tomorrow').props.onClick();
-    button(render(), 'Continue').props.onClick();
+    all(render(), node => node.type === 'appointment-slots')[0].props.onDate('Tomorrow');
+    all(render(), node => node.type === 'appointment-slots')[0].props.onSelect('10:00 AM - 11:00 AM');
     button(render(), 'Continue').props.onClick();
     assert.equal(all(render(), node => node.type === Checkout)[0].props.receipt, 'test-receipt');
     state.bookingResponse = response({ success: true, booking: { id: 'booking-test' } });
@@ -301,7 +304,11 @@ test('failed patient detail requests show a retry action and recover saved selec
   state.failed = false;
   button(render(), 'Retry loading booking details').props.onClick();
   render(); await view.flush();
-  for (let step = 1; step < 5; step++) button(render(), 'Continue').props.onClick();
+  for (let step = 1; step < 5; step++) {
+    const slots = all(render(), node => node.type === 'appointment-slots')[0];
+    if (slots) { slots.props.onDate('Tomorrow'); all(render(), node => node.type === 'appointment-slots')[0].props.onSelect('10:00 AM - 11:00 AM'); }
+    button(render(), 'Continue').props.onClick();
+  }
   assert.ok(button(render(), 'Submit Receipt'));
   assert.doesNotMatch(text(render()), /booking details could not be loaded/);
 });
@@ -402,11 +409,15 @@ test('guests reach checkout with an inline sign-in form and do not fetch private
     'lucide-react': new Proxy({}, { get: (_, key) => key }),
     '@/lib/geo': {}, '@/components/shared/LocationPicker': () => null,
     '@/components/auth/CheckoutSignIn': SignIn, '@/components/PaymentCheckout': Checkout,
-    '@/lib/appointment-time': {},
+    '@/lib/appointment-time': appointmentTime,
   }, '\nexport { BookServiceContent };');
   const component = view.exports.BookServiceContent;
   view.render({}, component); await view.flush();
-  for (let step = 1; step < 5; step++) button(view.render({}, component), 'Continue').props.onClick();
+  for (let step = 1; step < 5; step++) {
+    const slots = all(view.render({}, component), node => node.type === 'appointment-slots')[0];
+    if (slots) { slots.props.onDate('Tomorrow'); all(view.render({}, component), node => node.type === 'appointment-slots')[0].props.onSelect('10:00 AM - 11:00 AM'); }
+    button(view.render({}, component), 'Continue').props.onClick();
+  }
   const tree = view.render({}, component);
   assert.equal(all(tree, node => node.type === SignIn).length, 1);
   assert.equal(all(tree, node => node.type === Checkout).length, 0);
@@ -428,7 +439,7 @@ test('a booking 401 reveals inline sign-in and keeps the receipt and selections 
         services: [{ id: 'srv_doc', title: 'Home visit', base_price: '500', visiting_fee: '50' }],
         profiles: [{ id: 'profile', user_id: 'patient', full_name: 'Test Patient' }],
         addresses: [{ id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' }],
-        doctors: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500' }],
+        doctors: [{ id: 'doctor', name: 'Doctor', consultation_fee: '500', availability: 'AVAILABLE' }],
       });
     }, document: { getElementById: () => null }, sessionStorage: { getItem: () => null },
   }, {
@@ -436,11 +447,15 @@ test('a booking 401 reveals inline sign-in and keeps the receipt and selections 
     'next/navigation': { useRouter: () => ({ push() { assert.fail('Sign-in must not navigate away'); } }), useSearchParams: () => new URLSearchParams() },
     'lucide-react': new Proxy({}, { get: (_, key) => key }), '@/lib/geo': {},
     '@/components/shared/LocationPicker': () => null, '@/components/auth/CheckoutSignIn': SignIn,
-    '@/components/PaymentCheckout': Checkout, '@/lib/appointment-time': {},
+    '@/components/PaymentCheckout': Checkout, '@/lib/appointment-time': appointmentTime,
   }, '\nexport { BookServiceContent };');
   const component = view.exports.BookServiceContent;
   view.render({}, component); await view.flush();
-  for (let step = 1; step < 5; step++) button(view.render({}, component), 'Continue').props.onClick();
+  for (let step = 1; step < 5; step++) {
+    const slots = all(view.render({}, component), node => node.type === 'appointment-slots')[0];
+    if (slots) { slots.props.onDate('Tomorrow'); all(view.render({}, component), node => node.type === 'appointment-slots')[0].props.onSelect('10:00 AM - 11:00 AM'); }
+    button(view.render({}, component), 'Continue').props.onClick();
+  }
   let tree = view.render({}, component);
   all(tree, node => node.type === Checkout)[0].props.onReceipt('test-receipt');
   tree = view.render({}, component);

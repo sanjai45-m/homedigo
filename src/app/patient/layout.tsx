@@ -75,6 +75,8 @@ export default function PatientLayout({
 
         <div className="flex items-center gap-2">
           <button
+            aria-label="Open account menu"
+            aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 rounded-xl bg-slate-100 text-slate-700"
           >
@@ -85,7 +87,7 @@ export default function PatientLayout({
 
       {/* Sidebar Navigation */}
       <aside className={`
-        fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200/90 flex flex-col justify-between transition-transform duration-300
+        fixed inset-y-0 left-0 z-50 w-64 overflow-y-auto bg-white border-r border-slate-200/90 flex flex-col justify-between transition-transform duration-300
         ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
         lg:static lg:h-screen lg:sticky lg:top-0
       `}>
@@ -93,6 +95,7 @@ export default function PatientLayout({
         <div>
           <div className="p-6 border-b border-slate-100 flex items-center justify-between">
             <Logo size="md" href="/patient/dashboard" showBadge="Patient" />
+            <button aria-label="Close account menu" onClick={() => setMobileMenuOpen(false)} className="lg:hidden p-2 text-slate-600"><X className="h-5 w-5" /></button>
           </div>
 
           {/* Navigation Links */}
@@ -213,11 +216,17 @@ export default function PatientLayout({
         </header>
 
         {/* Page Inner Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {isPatient && <PushNotifications key={identity!.id} portal="patient" userId={identity!.id!} />}
+        <main className="flex-1 min-w-0 p-4 pb-28 sm:p-6 sm:pb-28 lg:p-8 max-w-7xl w-full mx-auto">
+          {isPatient && <details className="mb-4 rounded-xl border border-slate-200 bg-white text-sm text-teal-800"><summary className="cursor-pointer p-3 font-semibold">Appointment notifications</summary><div className="px-3"><PushNotifications key={identity!.id} portal="patient" userId={identity!.id!} /></div></details>}
           {children}
         </main>
       </div>
+
+      {mobileMenuOpen && <button aria-label="Close menu overlay" onClick={() => setMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-slate-900/40 lg:hidden" />}
+      <nav aria-label="Patient navigation" className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200 bg-white px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden">
+        {[{ href: '/patient/dashboard', label: 'Home', icon: LayoutDashboard }, { href: '/patient/book', label: 'Book visit', icon: PlusCircle }, { href: '/patient/appointments', label: 'Visits', icon: Calendar }].map(item => <Link key={item.href} href={item.href} aria-current={pathname.startsWith(item.href) ? 'page' : undefined} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-xs font-semibold text-slate-500 aria-[current=page]:bg-teal-50 aria-[current=page]:text-teal-800"><item.icon className="h-5 w-5" />{item.label}</Link>)}
+        <button onClick={() => setMobileMenuOpen(true)} aria-expanded={mobileMenuOpen} className="flex min-h-12 flex-col items-center justify-center gap-1 text-xs font-semibold text-slate-500"><Menu className="h-5 w-5" />More</button>
+      </nav>
 
       <AuthModal
         isOpen={isAuthOpen}

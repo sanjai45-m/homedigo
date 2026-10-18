@@ -48,7 +48,7 @@ function load(file) {
 }
 const guard = load('src/lib/api-auth.ts').requireApiUser;
 const roles = ['PATIENT', 'PARTNER', 'ADMIN', 'SUPER_ADMIN'];
-const publicRoutes = new Set(['services/route.ts:GET', 'doctors/route.ts:GET', 'specialities/route.ts:GET',
+const publicRoutes = new Set(['services/route.ts:GET', 'doctors/route.ts:GET', 'doctors/[id]/slots/route.ts:GET', 'specialities/route.ts:GET',
   'push/config/route.ts:GET',
   'patient/payment/route.ts:GET', 'auth/register/route.ts:POST', 'auth/password-reset/route.ts:POST', 'partner/register/route.ts:POST']);
 const privateRoutes = [];

@@ -35,7 +35,7 @@ const query = async (sql, args = []) => {
   const result = await db.query(sql, args);
   return { isConnected: true, rows: result.rows };
 };
-dependencies['./db'] = dependencies['@/lib/db'] = { executeQuery: query, isDbConfigured: true };
+dependencies['./db'] = dependencies['@/lib/db'] = { executeQuery: query, executePartnerQuery: async (id, sql, args) => { if (databaseFails) return { rows: [], isConnected: false }; return db.transaction(async tx => { await tx.query("SELECT user_id FROM partner_profiles WHERE user_id = $1 FOR UPDATE", [id]); return { rows: (await tx.query(sql, args)).rows, isConnected: true }; }); }, isDbConfigured: true };
 
 function load(path) {
   const source = ts.transpileModule(readFileSync(path, 'utf8'), {
@@ -56,7 +56,9 @@ function load(path) {
 dependencies['@/lib/password-reset-schema'] = load('src/lib/password-reset-schema.ts');
 dependencies['@/lib/api-auth'] = load('src/lib/api-auth.ts');
 const time = load('src/lib/appointment-time.ts');
-dependencies['@/lib/appointment-time'] = time;
+dependencies['./appointment-time'] = dependencies['@/lib/appointment-time'] = time;
+const schedule = load('src/lib/doctor-schedule.ts');
+dependencies['./doctor-schedule'] = dependencies['@/lib/doctor-schedule'] = schedule;
 const payment = load('src/lib/payment.ts');
 dependencies['./payment'] = dependencies['@/lib/payment'] = payment;
 const paymentSettings = load('src/lib/payment-settings.ts');
@@ -65,6 +67,8 @@ const adminPaymentSettings = load('src/app/api/super-admin/payment-settings/rout
 const publicPaymentSettings = load('src/app/api/patient/payment/route.ts');
 const schema = load('src/lib/appointment-schema.ts');
 dependencies['./appointment-schema'] = dependencies['@/lib/appointment-schema'] = schema;
+const scheduleStore = load('src/lib/doctor-schedule-store.ts');
+dependencies['@/lib/doctor-schedule-store'] = scheduleStore;
 const email = load('src/lib/email.ts');
 dependencies['./email'] = dependencies['@/lib/email'] = email;
 const worker = load('src/lib/appointment-notifications.ts');
@@ -72,6 +76,9 @@ dependencies['@/lib/appointment-notifications'] = worker;
 const confirm = load('src/app/api/pro/visits/[id]/confirm/route.ts').POST;
 const cron = load('src/app/api/cron/appointment-reminders/route.ts').GET;
 const bookings = load('src/app/api/patient/bookings/route.ts');
+const hoursRoute = load('src/app/api/pro/schedule/route.ts');
+const slotsRoute = load('src/app/api/doctors/[id]/slots/route.ts');
+const availabilityRoute = load('src/app/api/pro/availability/route.ts');
 const dispatch = load('src/app/api/admin/dispatch/route.ts').PUT;
 const receiptRoute = load('src/app/api/bookings/[id]/receipt/route.ts').GET;
 const doctorVisit = load('src/app/api/pro/visits/[id]/route.ts');
@@ -81,7 +88,7 @@ const billing = load('src/app/api/super-admin/billing/route.ts');
 const superStats = load('src/app/api/super-admin/stats/route.ts');
 const screenshot = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=';
 const bookingPayload = () => ({ patientProfileId: 'profile', addressId: 'address', serviceId: 'service', partnerId: 'doctor',
-  totalAmount: 100, scheduledDate: '2099-03-01', scheduledTimeSlot: '10:00 AM - 11:00 AM',
+  totalAmount: 100, scheduledDate: time.appointmentDate('Tomorrow'), scheduledTimeSlot: '10:00 AM - 11:00 AM',
   requestKey: crypto.randomUUID(), paymentMethod: 'GPAY', paymentReceipt: screenshot });
 
 before(async () => {
@@ -89,7 +96,7 @@ before(async () => {
     CREATE TABLE users (id VARCHAR(64) PRIMARY KEY, name TEXT, email TEXT, role TEXT, phone TEXT, image TEXT);
     CREATE TABLE addresses (id TEXT PRIMARY KEY, user_id TEXT, address_line1 TEXT, address_line2 TEXT, city TEXT, pincode TEXT, lat FLOAT, lng FLOAT);
     CREATE TABLE patient_profiles (id TEXT PRIMARY KEY, user_id TEXT, full_name TEXT, age INT, gender TEXT, blood_group TEXT, medical_notes TEXT);
-    CREATE TABLE partner_profiles (user_id TEXT, verification_status TEXT DEFAULT 'APPROVED', specialization TEXT, consultation_fee NUMERIC, latitude FLOAT, longitude FLOAT, location_name TEXT);
+    CREATE TABLE partner_profiles (user_id TEXT, availability TEXT DEFAULT 'AVAILABLE', verification_status TEXT DEFAULT 'APPROVED', specialization TEXT, consultation_fee NUMERIC, latitude FLOAT, longitude FLOAT, location_name TEXT);
     CREATE TABLE services (id TEXT PRIMARY KEY, title TEXT, base_price NUMERIC, visiting_fee NUMERIC, is_active BOOLEAN);
     CREATE TABLE bookings (
       id VARCHAR(64) PRIMARY KEY, booking_number TEXT, user_id TEXT, patient_profile_id TEXT,
@@ -104,6 +111,7 @@ before(async () => {
       service_title TEXT, subtotal NUMERIC, tax_amount NUMERIC, total_paid NUMERIC, payment_ref TEXT);
   `);
   await schema.ensureAppointmentSchema();
+  await scheduleStore.ensureDoctorScheduleSchema();
   await paymentSettings.ensurePaymentSettingsSchema();
 });
 
@@ -127,14 +135,98 @@ beforeEach(async () => {
       ('super', 'Super Admin', 'super@test.local', 'SUPER_ADMIN'),
       ('admin', 'Admin', 'admin@test.local', 'ADMIN');
     INSERT INTO partner_profiles (user_id) VALUES ('doctor2');`);
+  const hours = { days: Array.from({length:7}, () => [{start:'09:00',end:'19:00'}]), slotMinutes:60, bufferMinutes:0, daysOff:[] };
+  await db.query("INSERT INTO doctor_schedules (user_id,schedule,version) VALUES ('doctor',$1,'v1'),('doctor2',$1,'v1')", [JSON.stringify(hours)]);
 });
 after(() => db.close());
+
+test('at 5 PM IST, 1 PM today is disabled but 1 PM tomorrow remains available', () => {
+  const now = new Date('2026-10-19T17:00:00+05:30');
+  const hours = { ...schedule.defaultSchedule(), days: Array.from({ length: 7 }, () => [{ start: '09:00', end: '20:00' }]), bufferMinutes: 0 };
+  const today = schedule.scheduleSlots(hours, '2026-10-19', [], now);
+  assert.equal(today.find(slot => slot.label === '01:00 PM - 02:00 PM').available, false);
+  assert.equal(today.find(slot => slot.label === '05:00 PM - 06:00 PM').available, false);
+  assert.equal(today.find(slot => slot.label === '06:00 PM - 07:00 PM').available, true);
+  assert.equal(schedule.scheduleSlots(hours, '2026-10-20', [], now).find(slot => slot.label === '01:00 PM - 02:00 PM').available, true);
+  assert.throws(() => schedule.bookableDate('2026-10-18', now));
+  assert.throws(() => schedule.bookableDate('2026-11-18', now));
+});
+
+test('weekly hours validate periods, visit length and days off; reserved travel gaps block overlapping visits', () => {
+  const now = new Date('2026-10-19T08:00:00+05:30');
+  const hours = schedule.defaultSchedule();
+  const slots = schedule.scheduleSlots(hours, '2026-10-19', [], now);
+  assert.equal(slots[1].label, '10:15 AM - 11:15 AM');
+  const busy = [{ start: slots[0].start, end: slots[0].reservedUntil }];
+  const changed = { ...hours, bufferMinutes: 0 };
+  assert.equal(schedule.scheduleSlots(changed, '2026-10-19', busy, now)[1].available, false);
+  hours.daysOff = ['2026-10-19'];
+  assert.equal(schedule.scheduleSlots(hours, '2026-10-19', [], now).length, 0);
+  hours.days[1] = [{ start: '11:00', end: '10:00' }];
+  assert.throws(() => schedule.validateSchedule(hours));
+  hours.days[1] = [{ start: '09:00', end: '12:00' }, { start: '11:00', end: '14:00' }];
+  assert.throws(() => schedule.validateSchedule(hours));
+  assert.throws(() => schedule.validateSchedule({ ...schedule.defaultSchedule(), slotMinutes: 0 }));
+});
+
+test('doctor schedule saves only the signed-in doctor and public slots expose no patient data', async () => {
+  const hours = schedule.defaultSchedule();
+  const saved = await hoursRoute.PUT({ json: async () => ({ ...hours, userId: 'doctor2' }) });
+  assert.equal(saved.status, 200);
+  const stored = (await db.query("SELECT version FROM doctor_schedules WHERE user_id = 'doctor2'")).rows[0];
+  assert.equal(stored.version, 'v1');
+  const response = await slotsRoute.GET({ url: 'https://test.local/api/doctors/doctor/slots?date=Tomorrow' }, { params: Promise.resolve({ id: 'doctor' }) });
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.equal(data.configured, true);
+  assert.equal(data.timezone, 'Asia/Kolkata');
+  assert.equal(data.version, undefined);
+  assert.doesNotMatch(JSON.stringify(data), /patient@test|Test Patient|booking_number/);
+  assert.equal((await hoursRoute.PUT({ json: async () => ({ ...hours, slotMinutes: 1 }) })).status, 400);
+});
+
+test('off duty and unpublished hours block both public slots and direct booking requests', async () => {
+  assert.equal((await availabilityRoute.POST({ json: async () => ({ availability: 'OFFLINE' }) })).status, 200);
+  assert.equal((await scheduleStore.readDoctorSlots('doctor', 'Tomorrow')).slots.length, 0);
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  assert.equal((await bookings.POST({ json: async () => bookingPayload() })).status, 409);
+  await db.exec("UPDATE partner_profiles SET availability = 'AVAILABLE'; DELETE FROM doctor_schedules WHERE user_id = 'doctor'");
+  assert.equal((await scheduleStore.readDoctorSlots('doctor', 'Tomorrow')).configured, false);
+  assert.equal((await bookings.POST({ json: async () => bookingPayload() })).status, 409);
+  assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 0);
+});
+
+test('different concurrent requests cannot reserve the same doctor time; cancellation releases the slot', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const results = await Promise.all([bookings.POST({ json: async () => bookingPayload() }), bookings.POST({ json: async () => bookingPayload() })]);
+  assert.deepEqual(results.map(result => result.status).sort(), [200, 409]);
+  assert.equal((await db.query('SELECT * FROM payment_receipts')).rows.length, 1);
+  assert.equal((await scheduleStore.readDoctorSlots('doctor', 'Tomorrow')).slots.find(slot => slot.label === '10:00 AM - 11:00 AM').available, false);
+  await db.exec("UPDATE bookings SET status = 'CANCELLED'");
+  assert.equal((await scheduleStore.readDoctorSlots('doctor', 'Tomorrow')).slots.find(slot => slot.label === '10:00 AM - 11:00 AM').available, true);
+});
+
+test('booking rejects forged times, dates outside the window and past times today', async () => {
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  for (const fields of [{ scheduledTimeSlot: '10:05 AM - 11:05 AM' }, { scheduledDate: '2099-03-01' },
+    { scheduledDate: 'Today', scheduledTimeSlot: '12:00 AM - 01:00 AM' }]) {
+    const response = await bookings.POST({ json: async () => ({ ...bookingPayload(), ...fields }) });
+    assert.ok([400, 409].includes(response.status));
+  }
+  assert.equal((await db.query('SELECT * FROM bookings')).rows.length, 0);
+});
+
+test('availability storage failures never claim a saved duty change', async () => {
+  databaseFails = true;
+  assert.notEqual((await availabilityRoute.POST({ json: async () => ({ availability: 'OFFLINE' }) })).status, 200);
+  assert.equal((await hoursRoute.PUT({ json: async () => schedule.defaultSchedule() })).status, 503);
+});
 
 async function booking(id = 'booking') {
   await db.query(`INSERT INTO bookings (id, booking_number, user_id, patient_name,
     partner_id, service_title, scheduled_date, scheduled_time_slot, status, total_amount, payment_status)
-    VALUES ($1::text, $1::text, 'patient', 'Test Patient', 'doctor', 'Home Visit', '2099-03-01',
-    '10:00 AM - 11:00 AM', 'PENDING', 100, 'PAID')`, [id]);
+    VALUES ($1::text, $1::text, 'patient', 'Test Patient', 'doctor', 'Home Visit', $2,
+    '10:00 AM - 11:00 AM', 'PENDING', 100, 'PAID')`, [id, time.appointmentDate('Tomorrow')]);
 }
 const confirmBooking = (id = 'booking') => confirm({}, { params: Promise.resolve({ id }) });
 const runCron = (authorization = 'Bearer test-secret') => cron({ headers: new Headers({ authorization }) });
@@ -322,12 +414,12 @@ test('booking uses the signed-in patient and remains pending with normalized IST
   session = { user: { id: 'patient', role: 'PATIENT' } };
   const response = await bookings.POST({ json: async () => ({ ...bookingPayload(),
     userId: 'someone-else', patientName: 'Test Patient', serviceId: 'service', serviceTitle: 'Home Visit',
-    totalAmount: 100, scheduledDate: '2099-03-01', scheduledTimeSlot: '10:00 AM - 11:00 AM', partnerId: 'doctor',
+    totalAmount: 100, scheduledDate: time.appointmentDate('Tomorrow'), scheduledTimeSlot: '10:00 AM - 11:00 AM', partnerId: 'doctor',
   }) });
   assert.equal(response.status, 200);
   assert.equal(response.body.booking.user_id, 'patient');
   assert.equal(response.body.booking.status, 'PENDING');
-  assert.equal(new Date(response.body.booking.appointment_starts_at).toISOString(), '2099-03-01T04:30:00.000Z');
+  assert.equal(new Date(response.body.booking.appointment_starts_at).toISOString(), time.appointmentStart(time.appointmentDate('Tomorrow'), '10:00 AM - 11:00 AM'));
   assert.equal(messages[0].to, 'doctor@test.local');
 });
 
@@ -335,7 +427,7 @@ test('new booking rejects past times and sends only the patient acknowledgement 
   session = { user: { id: 'patient', role: 'PATIENT' } };
   const payload = { ...bookingPayload(), partnerId: null, scheduledDate: '2020-01-01' };
   assert.equal((await bookings.POST({ json: async () => payload })).status, 400);
-  payload.scheduledDate = '2099-03-01';
+  payload.scheduledDate = time.appointmentDate('Tomorrow');
   assert.equal((await bookings.POST({ json: async () => payload })).status, 200);
   assert.equal(messages.length, 1);
   assert.equal(messages[0].to, 'patient@test.local');
@@ -345,7 +437,7 @@ test('new booking rejects past times and sends only the patient acknowledgement 
 
 test('new email templates escape patient content and include IST and the correct portal', async () => {
   await email.sendAppointmentConfirmationEmail({ to: 'patient@test.local', bookingId: 'booking', bookingNumber: 'REF',
-    patientName: '<img src=x>', doctorName: 'Dr A & B', serviceTitle: 'Visit', scheduledDate: '2099-03-01', scheduledTimeSlot: '10:00 AM - 11:00 AM' });
+    patientName: '<img src=x>', doctorName: 'Dr A & B', serviceTitle: 'Visit', scheduledDate: time.appointmentDate('Tomorrow'), scheduledTimeSlot: '10:00 AM - 11:00 AM' });
   assert.match(messages[0].html, /&lt;img src=x&gt;/);
   assert.match(messages[0].html, /Dr A &amp; B/);
   assert.match(messages[0].text, /\(IST\)/);

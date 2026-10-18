@@ -73,6 +73,7 @@ const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:3100';
     page.setDefaultTimeout(45000);
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(origin + '/patient/book');
+    await page.locator('summary').filter({ hasText: 'Appointment notifications' }).click();
     await page.getByRole('button', { name: 'Enable notifications', exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.__permissionPrompts), 0);
     await page.evaluate(() => { window.__permission = 'denied'; });

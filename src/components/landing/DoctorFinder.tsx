@@ -32,6 +32,7 @@ type Doctor = {
   city?: string;
   location_name?: string;
   bio?: string;
+  availability?: string;
 };
 
 function DoctorPortrait({ doctor }: { doctor: Doctor }) {
@@ -74,13 +75,13 @@ export default function DoctorFinder() {
 
   useEffect(() => {
     const controller = new AbortController();
-    async function load() {
-      setLoading(true);
+    async function load(quiet = false) {
+      if (!quiet) setLoading(true);
       setError(false);
       try {
         const responses = await Promise.all(
           ["/api/doctors", "/api/specialities"].map((url) =>
-            fetch(url, { signal: controller.signal }),
+            fetch(url, { signal: controller.signal, cache: 'no-store' }),
           ),
         );
         if (responses.some((response) => !response.ok))
@@ -102,7 +103,10 @@ export default function DoctorFinder() {
       }
     }
     void load();
-    return () => controller.abort();
+    const refresh = () => { if (document.visibilityState === 'visible') void load(true); };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [retry]);
 
   const cities = [
@@ -378,6 +382,7 @@ export default function DoctorFinder() {
                           "Confirm location when booking"}
                       </span>
                     </div>
+                    {doctor.availability !== 'AVAILABLE' && <p className={styles.unavailable}>Currently not available</p>}
                     <div className={styles.cardBottom}>
                       <div>
                         <small>Consultation</small>
@@ -391,13 +396,13 @@ export default function DoctorFinder() {
                             : "Confirm fee"}
                         </strong>
                       </div>
-                      <Link
+                      {doctor.availability !== 'AVAILABLE' ? <button type="button" disabled className={styles.unavailableButton}>Not available</button> : <Link
                         href={bookingLink(doctor.id)}
                         aria-label={`Book appointment with ${doctor.name}`}
                       >
                         Book appointment{" "}
                         <ArrowUpRight size={16} aria-hidden="true" />
-                      </Link>
+                      </Link>}
                     </div>
                   </article>
                 );

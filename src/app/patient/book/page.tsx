@@ -38,6 +38,7 @@ import { calculateDistanceKm, estimateTravelMinutes, reverseGeocode } from '@/li
 import LocationPicker from '@/components/shared/LocationPicker';
 import CheckoutSignIn from '@/components/auth/CheckoutSignIn';
 import PaymentCheckout from '@/components/PaymentCheckout';
+import AppointmentSlots, { useAppointmentSlots } from '@/components/appointments/AppointmentSlots';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 
 export default function BookServicePage() {
@@ -94,8 +95,10 @@ function BookServiceContent() {
   const [selectedProfileId, setSelectedProfileId] = useState('');
   const [selectedAddressId, setSelectedAddressId] = useState('');
   const [selectedPartnerId, setSelectedPartnerId] = useState(initialDoctorId);
-  const [scheduledDate, setScheduledDate] = useState('Today');
-  const [scheduledSlot, setScheduledSlot] = useState('10:00 AM - 11:00 AM');
+  const [scheduledDate, setScheduledDate] = useState(() => appointmentDate('Today'));
+  const [scheduledSlot, setScheduledSlot] = useState('');
+  const slotState = useAppointmentSlots(selectedPartnerId, scheduledDate, selectedServiceId === 'srv_doc');
+  const selectedSlotAvailable = slotState.slots.some(slot => slot.label === scheduledSlot && slot.available);
   const [paymentMethod, setPaymentMethod] = useState<'GPAY' | 'PHONEPE' | 'UPI'>('UPI');
   const [paymentReceipt, setPaymentReceipt] = useState('');
   const [paymentRef, setPaymentRef] = useState('');
@@ -122,6 +125,7 @@ function BookServiceContent() {
       setCheckoutError('Select your patient, address and doctor before paying.');
       return false;
     }
+    if (!selectedSlotAvailable) { setCheckoutError('Choose an available future appointment time before paying.'); return false; }
     let date: string;
     try {
       date = appointmentDate(scheduledDate);
@@ -239,7 +243,7 @@ function BookServiceContent() {
             setSelectedPartnerId(current => current || initialDoctorId);
           }
         } else if (availablePartners.length > 0) {
-          setSelectedPartnerId(current => current || availablePartners[0].id);
+          setSelectedPartnerId(current => current || availablePartners.find((partner: any) => partner.availability === 'AVAILABLE')?.id || '');
         }
         try {
           const draft = !restoredDraft.current && userId ? JSON.parse(sessionStorage.getItem(draftKey) || 'null') : null;
@@ -260,6 +264,22 @@ function BookServiceContent() {
     loadData();
     return () => { active = false; };
   }, [initialDoctorId, initialServiceId, sessionStatus, userId, authRevision]);
+
+  useEffect(() => {
+    if (currentStep !== 3) return;
+    const controller = new AbortController();
+    const refresh = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const response = await fetch('/api/doctors', { cache: 'no-store', signal: controller.signal });
+        const data = await response.json();
+        if (response.ok && !controller.signal.aborted) setPartners(data.doctors || []);
+      } catch { /* Slot availability is checked again before checkout. */ }
+    };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [currentStep]);
 
   const handleSelectAddress = (addrId: string) => {
     setSelectedAddressId(addrId);
@@ -388,13 +408,19 @@ function BookServiceContent() {
   const paymentBlockedReason = isInitialLoading ? 'Loading your booking details.' : detailsError
     || (!selectedProfile || !selectedAddress ? 'Select or add your patient profile and visit address before paying.' : '')
     || (!selectedService ? 'Choose a service before paying.' : '')
-    || (selectedServiceId === 'srv_doc' && !matchedPartner ? 'Choose an available doctor before paying.' : '');
+    || (selectedServiceId === 'srv_doc' && !matchedPartner ? 'Choose an available doctor before paying.' : '')
+    || (!selectedSlotAvailable ? slotState.error || 'Choose an available future appointment time before paying.' : '');
 
   const continueBooking = () => {
     setCheckoutError('');
+    if (currentStep === 4 && !selectedSlotAvailable) {
+      setCheckoutError(slotState.error || 'Choose an available future appointment time.');
+      return;
+    }
     const navigationError = isInitialLoading ? 'Loading your booking details.' : detailsError
       || (!selectedProfile || !selectedAddress ? 'Select or add your patient profile and visit address before continuing.' : '')
-      || (currentStep === 4 ? paymentBlockedReason : '');
+      || (currentStep === 4 ? paymentBlockedReason : '')
+      || (currentStep === 3 && selectedServiceId === 'srv_doc' && (!matchedPartner || matchedPartner.availability !== 'AVAILABLE') ? 'Choose an available doctor to continue.' : '');
     if (!authRequired && currentStep >= 2 && navigationError) {
       setCheckoutError(navigationError);
       if (!isInitialLoading && !detailsError && (!selectedProfile || !selectedAddress)) setCurrentStep(2);
@@ -485,29 +511,19 @@ function BookServiceContent() {
       setLoading(false);
     }
   };
-
-  const dateOptions = ['Today', 'Tomorrow', 'Day After Tomorrow'];
-  const slotOptions = [
-    '09:00 AM - 10:00 AM',
-    '10:00 AM - 11:00 AM',
-    '02:00 PM - 03:00 PM',
-    '04:30 PM - 05:30 PM',
-    '06:00 PM - 07:00 PM',
-  ];
-
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-200">
+    <div className="max-w-4xl mx-auto space-y-5 sm:space-y-8 animate-in fade-in duration-200">
       {/* Wizard Header */}
       <div className="text-center space-y-2">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-teal-700 text-xs font-bold uppercase tracking-wider">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Doorstep Clinical Booking Wizard</span>
+          <span>Care at your doorstep</span>
         </div>
-        <h1 className="text-3xl font-black font-heading text-slate-900 tracking-tight">
-          Schedule Verified Home Care
+        <h1 className="text-2xl sm:text-3xl font-semibold font-heading text-slate-900 tracking-tight">
+          Book a home visit
         </h1>
         <p className="text-xs text-slate-500 max-w-md mx-auto">
-          Fast 5-step clinical booking backed by dynamic pricing & verified on-duty doctors.
+          Choose your care, doctor and a time that works for you.
         </p>
       </div>
 
@@ -518,7 +534,7 @@ function BookServiceContent() {
       )}
 
       {/* Preselected Doctor Banner (if matched) */}
-      {matchedPartner && (
+      {matchedPartner && currentStep !== 3 && (
         <div className="p-4 rounded-3xl bg-gradient-to-r from-teal-50 via-emerald-50 to-teal-50 border border-teal-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <img
@@ -546,7 +562,7 @@ function BookServiceContent() {
               </div>
             </div>
           </div>
-          <div className="text-right shrink-0">
+          <div className="hidden sm:block text-right shrink-0">
             <div className="text-[10px] uppercase font-bold text-slate-500">Consultation Fee</div>
             <div className="text-base font-black text-emerald-700">₹{baseRate}</div>
             {patientCoords && matchedPartner.latitude && matchedPartner.longitude && (
@@ -563,11 +579,11 @@ function BookServiceContent() {
         {[
           { step: 1, label: 'Service' },
           { step: 2, label: 'Patient' },
-          { step: 3, label: 'Slot & Notes' },
-          { step: 4, label: 'Clinician' },
+          { step: 3, label: 'Doctor' },
+          { step: 4, label: 'Time' },
           { step: 5, label: 'Payment' },
         ].map((s) => (
-          <div key={s.step} className="flex items-center gap-2">
+          <div key={s.step} className="flex flex-col sm:flex-row items-center gap-1 sm:gap-2">
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
                 currentStep >= s.step
@@ -578,7 +594,7 @@ function BookServiceContent() {
               {currentStep > s.step ? <CheckCircle2 className="w-4 h-4" /> : s.step}
             </div>
             <span
-              className={`text-xs font-semibold hidden md:inline ${
+              className={`text-[11px] sm:text-xs font-semibold ${
                 currentStep >= s.step ? 'text-slate-900' : 'text-slate-400'
               }`}
             >
@@ -589,7 +605,7 @@ function BookServiceContent() {
       </div>
 
       {/* Step Content Box */}
-      <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-md space-y-6">
+      <div className="bg-white rounded-2xl p-4 sm:p-8 border border-slate-200 shadow-md space-y-6">
         {/* STEP 1: CHOOSE SERVICE */}
         {authRequired && (currentStep === 2 || currentStep === 5 || showSignIn) && <div id="booking-sign-in" className="scroll-mt-24">
           {sessionStatus === 'loading' ? <p role="status">Checking your account…</p> : <CheckoutSignIn onSignedIn={() => {
@@ -887,85 +903,42 @@ function BookServiceContent() {
           </div>
         )}
 
-        {/* STEP 3: DATE & TIME SLOT */}
-        {currentStep === 3 && (
+        {/* STEP 4: DATE & TIME SLOT */}
+        {currentStep === 4 && (
           <div className="space-y-6 animate-in fade-in duration-150">
             <div className="border-b border-slate-100 pb-3">
               <h2 className="text-lg font-bold text-slate-900 font-heading">
-                3. Choose Date & Time Slot
+                4. Choose your time
               </h2>
               <p className="text-xs text-slate-500">Select when you want the clinical visit scheduled</p>
             </div>
 
-            {/* Dates */}
-            <div className="space-y-3">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Appointment Day
-              </span>
-              <div className="grid grid-cols-3 gap-3">
-                {dateOptions.map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setScheduledDate(d)}
-                    className={`p-3.5 rounded-2xl border-2 font-bold text-xs transition-all ${
-                      scheduledDate === d
-                        ? 'border-teal-600 bg-teal-50 text-teal-900'
-                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    {d}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Slots */}
-            <div className="space-y-3 pt-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                Available Time Slot
-              </span>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                {slotOptions.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setScheduledSlot(s)}
-                    className={`p-3 rounded-2xl border-2 font-bold text-xs transition-all flex items-center justify-between ${
-                      scheduledSlot === s
-                        ? 'border-teal-600 bg-teal-50 text-teal-900'
-                        : 'border-slate-200 hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <span>{s}</span>
-                    {scheduledSlot === s && <CheckCircle2 className="w-4 h-4 text-teal-600" />}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <AppointmentSlots date={scheduledDate} selected={scheduledSlot}
+              onDate={date => { setScheduledDate(date); setScheduledSlot(''); }} onSelect={setScheduledSlot} {...slotState} />
 
             {/* Clinical Notes */}
-            <div className="pt-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Symptoms & Clinical Instructions (Optional)
-              </label>
+            <details className="pt-2">
+              <summary className="cursor-pointer py-3 text-sm font-semibold text-teal-800">Add symptoms or visit notes (optional)</summary>
               <textarea
+                aria-label="Symptoms or visit notes"
                 rows={3}
                 placeholder="Mention specific symptoms, patient mobility condition, or gate entry notes..."
                 value={clinicalNotes}
                 onChange={(e) => setClinicalNotes(e.target.value)}
                 className="w-full p-3 rounded-xl border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-teal-600"
               />
-            </div>
+            </details>
           </div>
         )}
 
-        {/* STEP 4: ASSIGNED PARTNER / DOCTOR SELECTION */}
-        {currentStep === 4 && (
+        {/* STEP 3: DOCTOR SELECTION */}
+        {currentStep === 3 && (
           <div className="space-y-6 animate-in fade-in duration-150">
             <div className="border-b border-slate-100 pb-3">
               <h2 className="text-lg font-bold text-slate-900 font-heading">
-                4. Select Available Verified Healthcare Clinician
+                3. Choose your doctor
               </h2>
-              <p className="text-xs text-slate-500">Real-time distance calculated from your doorstep GPS location</p>
+              <p className="text-xs text-slate-500">Choose an on-duty doctor to see their available times.</p>
             </div>
 
             {isInitialLoading && partners.length === 0 ? (
@@ -998,7 +971,9 @@ function BookServiceContent() {
                   return (
                     <div
                       key={p.id}
-                      onClick={() => setSelectedPartnerId(p.id)}
+                      role="button" tabIndex={p.availability === 'AVAILABLE' ? 0 : -1} aria-disabled={p.availability !== 'AVAILABLE'}
+                      onKeyDown={event => { if (p.availability === 'AVAILABLE' && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); setSelectedPartnerId(p.id); setScheduledSlot(''); } }}
+                      onClick={() => { if (p.availability === 'AVAILABLE') { setSelectedPartnerId(p.id); setScheduledSlot(''); } }}
                       className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-4 ${
                         isSelected
                           ? 'border-teal-600 bg-teal-50/60 shadow-md ring-1 ring-teal-500/30'
@@ -1010,14 +985,15 @@ function BookServiceContent() {
                         alt={p.name}
                         className="w-16 h-16 rounded-2xl object-cover ring-2 ring-teal-500/20 shrink-0"
                       />
-                      <div className="space-y-1.5 flex-1">
-                        <div className="flex items-center justify-between">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <h3 className="text-sm font-bold text-slate-900">{p.name}</h3>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
                             ✓ {p.verification_status || 'VERIFIED'}
                           </span>
                         </div>
                         <p className="text-xs font-semibold text-teal-700">{p.specialization}</p>
+                        {p.availability !== 'AVAILABLE' && <p className="text-sm font-semibold text-amber-800">Currently not available</p>}
 
                         {/* Location and Distance Badge */}
                         <div className="flex flex-wrap items-center gap-1.5 text-[11px] pt-1">
@@ -1078,7 +1054,7 @@ function BookServiceContent() {
               </h3>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
                 <span>{scheduledDate} · {scheduledSlot} (IST)</span>
-                {!submittedBooking && <button type="button" onClick={() => { setCheckoutError(''); setCurrentStep(3); }} className="font-bold text-teal-700 underline disabled:opacity-50">Change appointment time</button>}
+                {!submittedBooking && <button type="button" onClick={() => { setCheckoutError(''); setCurrentStep(4); }} className="font-bold text-teal-700 underline disabled:opacity-50">Change appointment time</button>}
               </div>
               <div className="flex justify-between text-xs font-semibold text-slate-800">
                 <span>{selectedService?.title || 'Selected Healthcare Service'}</span>

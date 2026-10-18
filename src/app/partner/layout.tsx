@@ -20,10 +20,12 @@ import {
 import PortalBrand from '@/components/portals/PortalBrand';
 import PortalHeader from '@/components/portals/PortalHeader';
 import PushNotifications from '@/components/PushNotifications';
+import FeedbackToast from '@/components/shared/FeedbackToast';
 import styles from '@/components/portals/portal.module.css';
 
 const partnerNavItems = [
   { href: '/partner/dashboard', label: "Today's Field Queue", icon: Calendar },
+  { href: '/partner/schedule', label: 'Appointment hours', icon: Calendar },
   { href: '/partner/earnings', label: 'Earnings & Payout Ledger', icon: DollarSign },
 ];
 
@@ -35,6 +37,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   const [togglingShift, setTogglingShift] = useState(false);
   const [partnerProfile, setPartnerProfile] = useState<any>(null);
   const [accessError, setAccessError] = useState('');
+  const [shiftError, setShiftError] = useState('');
 
   // Auth guard — redirect if not authenticated as PARTNER
   useEffect(() => {
@@ -70,10 +73,10 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
         // Load real availability from DB
         const avRes = await staffFetch('/api/pro/availability');
         const avData = await avRes.json();
+        if (!avRes.ok) throw new Error(avData.error || 'Could not load duty status. Refresh to try again.');
         setIsOnline(avData.availability === 'AVAILABLE');
       } catch (e) {
-        console.error('Failed to load partner profile:', e);
-        setIsOnline(false);
+        setShiftError(e instanceof Error ? e.message : 'Could not load duty status. Refresh to try again.');
       }
     }
     loadPartnerProfile();
@@ -92,6 +95,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
     if (togglingShift || isOnline === null) return;
     const nextState = !isOnline;
     setTogglingShift(true);
+    setShiftError('');
     try {
       const res = await staffFetch('/api/pro/availability', {
         method: 'POST',
@@ -101,14 +105,14 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
         }),
       });
       const data = await res.json();
-      if (data.success) {
+      if (res.ok && data.success) {
         // Only update UI after DB confirms
         setIsOnline(data.availability === 'AVAILABLE');
       } else {
-        console.error('Availability update failed:', data.error);
+        setShiftError(data.error || 'Could not change duty status. Please try again.');
       }
     } catch (e) {
-      console.error('Failed to toggle shift:', e);
+      setShiftError('Could not change duty status. Please try again.');
     } finally {
       setTogglingShift(false);
     }
@@ -121,6 +125,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className={`${styles.theme} ${styles.shell}`}>
+      <FeedbackToast message={shiftError} type="error" onDismiss={() => setShiftError('')} />
       <a href="#portal-content" className={styles.skipLink}>Skip to main content</a>
       {/* Sidebar */}
 
@@ -148,7 +153,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                   : 'bg-slate-200 text-slate-600'
               }`}>
-                {isOnline === null ? 'LOADING' : isOnline ? 'ON DUTY' : 'OFFLINE'}
+                {isOnline === null ? 'CHECKING' : isOnline ? 'ON DUTY' : 'OFF DUTY'}
               </span>
             </div>
             <button
@@ -163,6 +168,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
               {togglingShift && <Loader2 className="w-3 h-3 animate-spin" />}
               {isOnline === null ? 'Checking status...' : togglingShift ? 'Saving...' : isOnline ? 'Go Off-Duty' : 'Start Duty Shift'}
             </button>
+            <p className="mt-2 text-xs leading-relaxed text-slate-500">Off duty pauses new bookings. Existing appointments stay scheduled.</p>
           </div>
 
           {/* Navigation links */}

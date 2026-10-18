@@ -54,11 +54,11 @@ export async function GET(request: Request) {
 
       const res = await executeQuery(query, params);
       if (res.isConnected) {
-        return NextResponse.json({ doctors: res.rows || [] });
+        return NextResponse.json({ doctors: res.rows || [] }, { headers: { 'Cache-Control': 'no-store' } });
       }
     }
 
-    return NextResponse.json({ doctors: [] });
+    return NextResponse.json({ error: 'Doctor directory is temporarily unavailable.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to fetch doctors' }, { status: 500 });
   }

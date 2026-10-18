@@ -1,8 +1,8 @@
 import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
-import { executeQuery, isDbConfigured } from '@/lib/db';
+import { executeQuery, executePartnerQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
-import { ensureAppointmentSchema } from '@/lib/appointment-schema';
+import { ensureDoctorScheduleSchema, readDoctorSlots } from '@/lib/doctor-schedule-store';
 
 export const maxDuration = 60;
 
@@ -46,16 +46,29 @@ export async function PUT(request: Request) {
     }
 
     if (isDbConfigured) {
-      await ensureAppointmentSchema();
+      await ensureDoctorScheduleSchema();
+      let assignedSlot;
+      let scheduleVersion: string | null = null;
       if (partnerId) {
         const partner = await executeQuery(`SELECT u.id FROM users u
           JOIN partner_profiles p ON p.user_id = u.id
           WHERE u.id = $1 AND u.role = 'PARTNER' AND p.verification_status = 'APPROVED'`, [partnerId]);
         if (!partner.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
         if (!partner.rows.length) return NextResponse.json({ error: 'Select an approved clinician.' }, { status: 400 });
+        const current = await executeQuery('SELECT * FROM bookings WHERE id = $1', [bookingId]);
+        if (!current.isConnected) return NextResponse.json({ error: 'Storage is unavailable.' }, { status: 503 });
+        if (!current.rows[0]) return NextResponse.json({ error: 'Appointment not found.' }, { status: 404 });
+        if (current.rows[0].partner_id !== partnerId) {
+          let available;
+          try { available = await readDoctorSlots(partnerId, current.rows[0].scheduled_date); }
+          catch { return NextResponse.json({ error: 'The appointment date or clinician schedule is unavailable.' }, { status: 409 }); }
+          assignedSlot = available?.slots.find(slot => slot.available && slot.label === current.rows[0].scheduled_time_slot);
+          if (!assignedSlot) return NextResponse.json({ error: 'This clinician is not available at the appointment time. Choose another clinician.' }, { status: 409 });
+          scheduleVersion = available!.version;
+        }
       }
-      const updateRes = await executeQuery(
-        `UPDATE bookings
+      const updateRes = await executePartnerQuery(partnerId || null,
+        `UPDATE bookings AS target
          SET status = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN 'ASSIGNED'
                            ELSE COALESCE($1, status) END,
              doctor_confirmed_at = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL
@@ -66,10 +79,19 @@ export async function PUT(request: Request) {
              partner_location_accuracy = CASE WHEN $2::text IS NOT NULL AND partner_id IS DISTINCT FROM $2 THEN NULL ELSE partner_location_accuracy END,
              partner_id = COALESCE($2, partner_id),
              partner_name = COALESCE($3, partner_name),
-             partner_title = COALESCE($4, partner_title)
-         WHERE id = $5
+             partner_title = COALESCE($4, partner_title),
+             appointment_ends_at = COALESCE($6::timestamptz, appointment_ends_at),
+             slot_reserved_until = COALESCE($7::timestamptz, slot_reserved_until)
+         WHERE id = $5 AND ($8::text IS NULL OR (
+           EXISTS (SELECT 1 FROM partner_profiles p JOIN doctor_schedules s ON s.user_id = p.user_id
+             WHERE p.user_id = $2 AND p.availability = 'AVAILABLE' AND p.verification_status = 'APPROVED' AND s.version = $8)
+           AND target.appointment_starts_at > clock_timestamp()
+           AND NOT EXISTS (SELECT 1 FROM bookings occupied WHERE occupied.partner_id = $2 AND occupied.id <> $5
+             AND occupied.status NOT IN ('CANCELLED', 'COMPLETED') AND occupied.appointment_starts_at < $7::timestamptz
+             AND COALESCE(occupied.slot_reserved_until, occupied.appointment_ends_at, occupied.appointment_starts_at + INTERVAL '1 hour') > target.appointment_starts_at)
+         ))
          RETURNING *`,
-        [status, partnerId, partnerName, partnerTitle, bookingId]
+        [status, partnerId, partnerName, partnerTitle, bookingId, assignedSlot?.end || null, assignedSlot?.reservedUntil || null, scheduleVersion]
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
@@ -96,9 +118,10 @@ export async function PUT(request: Request) {
 
         return NextResponse.json({ success: true, booking });
       }
+      if (updateRes.isConnected) return NextResponse.json({ error: 'The appointment or clinician availability changed. Refresh and try again.' }, { status: 409 });
     }
 
-    return NextResponse.json({ success: true, message: 'Booking dispatch updated successfully' });
+    return NextResponse.json({ error: 'Booking dispatch could not be saved.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Failed to update dispatch' }, { status: 500 });
   }

@@ -227,7 +227,19 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## Learn More
+## Doctor availability and appointment hours
+
+Doctors publish their weekly hours in **Partner portal → Appointment hours**. Choose a visit duration, travel gap, up to two periods per day, and any days away, then save. Suggested hours are not published automatically. All appointment times use **Asia/Kolkata (IST)**; patients can choose dates within the next 30 days.
+
+The on-duty switch controls new bookings. Off-duty doctors are labelled “Currently not available” on the landing page. The directory and booking slots refresh every 15 seconds while visible and on window focus. Changing hours or going off duty preserves existing appointments.
+
+Patient booking selects the doctor before the time. Past times, reserved visits and travel gaps cannot be selected. The server validates the published schedule again and serializes competing reservations using a doctor row lock and a fresh transaction snapshot. Reassignment also checks the replacement doctor's schedule. Pending receipt-review bookings reserve their time until cancelled or completed; unsuccessful submissions preserve the receipt for retry.
+
+Schedule storage is added automatically on first use (`doctor_schedules`, booking end and reserved-until timestamps). No Firebase settings are needed for this feature. Patient mobile navigation uses Home, Book visit, Visits and More; notification settings are under “Appointment notifications”.
+
+Validation: `node --test scripts/appointments.test.mjs scripts/api-authorization.test.mjs scripts/checkout-ui.test.mjs`. With the app running locally, `node scripts/doctor-schedule.browser.mjs` tests synthetic doctor/patient flows at 360, 390 and 1440 pixels. Set `BROWSER_EXECUTABLE` if the Playwright browser is not installed. Browser screenshots are saved under ignored `coverage/schedule/`.
+
+## Next.js resources
 
 To learn more about Next.js, take a look at the following resources:
 

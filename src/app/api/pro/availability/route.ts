@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { availability = 'AVAILABLE' } = body;
+    const { availability } = body;
 
     if (!['AVAILABLE', 'BUSY', 'OFFLINE'].includes(availability)) {
       return NextResponse.json({ error: 'Invalid availability value.' }, { status: 400 });
@@ -45,8 +45,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Offline fallback
-    return NextResponse.json({ success: true, availability });
+    return NextResponse.json({ error: 'Availability could not be saved. Please retry.' }, { status: 503 });
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || 'Failed to update availability' },
@@ -68,7 +67,7 @@ export async function GET() {
     const partnerId = (session?.user as any)?.id;
 
     if (!partnerId) {
-      return NextResponse.json({ availability: 'OFFLINE' });
+      return NextResponse.json({ error: 'Availability could not be loaded. Please retry.' }, { status: 503 });
     }
 
     if (isDbConfigured) {
@@ -77,12 +76,12 @@ export async function GET() {
         [partnerId]
       );
       if (res.isConnected && res.rows.length > 0) {
-        return NextResponse.json({ availability: res.rows[0].availability });
+        return NextResponse.json({ availability: res.rows[0].availability }, { headers: { 'Cache-Control': 'private, no-store' } });
       }
     }
 
-    return NextResponse.json({ availability: 'OFFLINE' });
+    return NextResponse.json({ error: 'Availability could not be loaded. Please retry.' }, { status: 503 });
   } catch {
-    return NextResponse.json({ availability: 'OFFLINE' });
+    return NextResponse.json({ error: 'Availability could not be loaded. Please retry.' }, { status: 503 });
   }
 }
