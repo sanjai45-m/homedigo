@@ -23,6 +23,14 @@ export function ensurePushSchema() {
       )`,
       `CREATE INDEX IF NOT EXISTS appointment_push_due_idx ON appointment_push_deliveries (due_at)
         WHERE sent_at IS NULL AND discarded_at IS NULL`,
+      `CREATE TABLE IF NOT EXISTS doctor_reminder_preferences (
+        user_id VARCHAR(64) PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        minutes INTEGER[] NOT NULL DEFAULT ARRAY[60,30,15], updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`,
+      `ALTER TABLE appointment_push_deliveries ADD COLUMN IF NOT EXISTS reminder_minutes INTEGER,
+        ADD COLUMN IF NOT EXISTS reminder_confirmed_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS reminder_starts_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS event_id BIGINT REFERENCES appointment_status_events(id) ON DELETE CASCADE`,
     ]) {
       const result = await executeQuery(sql);
       if (!result.isConnected) throw new Error('Push storage unavailable.');

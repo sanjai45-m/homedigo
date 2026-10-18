@@ -12,6 +12,7 @@ let enabled = true, offline = false, session = null, sendError = null, messages 
 const patientFid = 'cPatientInstallation123';
 const doctorFid = 'dDoctorInstallation1234';
 const deps = {
+  'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
   'node:crypto': crypto,
   './push-config': { pushConfigured: () => enabled },
   '@/lib/push-config': { pushConfigured: () => enabled, publicPushConfig: () => ({ projectId: 'test-project', apiKey: 'public-test-key', appId: 'test-app', messagingSenderId: 'test-sender' }) },
@@ -29,7 +30,7 @@ const query = async (sql, values = []) => {
   if (offline) return { rows: [], isConnected: false };
   const result = await db.query(sql, values); return { rows: result.rows, isConnected: true };
 };
-deps['./db'] = deps['@/lib/db'] = { executeQuery: query };
+deps['./db'] = deps['@/lib/db'] = { executeQuery: query, isDbConfigured: true };
 function load(path) {
   const exports = {};
   const source = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: {
@@ -41,9 +42,17 @@ function load(path) {
   });
   return exports;
 }
+const appointmentSchema = load('src/lib/appointment-schema.ts');
+deps['./appointment-schema'] = deps['@/lib/appointment-schema'] = appointmentSchema;
 const schema = load('src/lib/push-schema.ts');
 deps['./push-schema'] = deps['@/lib/push-schema'] = schema;
 const worker = load('src/lib/appointment-push.ts');
+deps['@/lib/appointment-push'] = worker;
+deps['@/lib/tracking'] = load('src/lib/tracking.ts');
+deps['@/lib/doctor-reminders'] = load('src/lib/doctor-reminders.ts');
+const reminderSettings = load('src/app/api/pro/reminders/route.ts');
+const locationRoute = load('src/app/api/pro/visits/[id]/location/route.ts');
+const visitRoute = load('src/app/api/pro/visits/[id]/route.ts');
 const subscriptions = load('src/app/api/push/subscriptions/route.ts');
 const configRoute = load('src/app/api/push/config/route.ts');
 const swRoute = load('src/app/firebase-messaging-sw.js/route.ts');
@@ -54,10 +63,13 @@ const request = (body, method = 'POST') => new Request('https://homedigo.test/ap
 before(async () => {
   await db.exec(`CREATE TABLE users (id VARCHAR(64) PRIMARY KEY, role TEXT, password_changed_at TIMESTAMPTZ);
     CREATE TABLE partner_profiles (user_id TEXT, verification_status TEXT);
+    CREATE TABLE addresses (id TEXT PRIMARY KEY, user_id TEXT, lat FLOAT, lng FLOAT);
     CREATE TABLE bookings (id VARCHAR(64) PRIMARY KEY, user_id TEXT, partner_id TEXT, status TEXT,
+      address_id TEXT, patient_lat FLOAT, patient_lng FLOAT, partner_lat FLOAT, partner_lng FLOAT, payment_status TEXT, vital_bp TEXT, vital_pulse TEXT, vital_spo2 TEXT, vital_sugar TEXT, prescription_notes TEXT,
       appointment_starts_at TIMESTAMPTZ, doctor_confirmed_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW());
     CREATE TABLE appointment_emails (id BIGSERIAL PRIMARY KEY, booking_id VARCHAR(64), partner_id TEXT,
       confirmed_at TIMESTAMPTZ, kind TEXT, due_at TIMESTAMPTZ, sent_at TIMESTAMPTZ);`);
+  await appointmentSchema.ensureAppointmentSchema();
   await schema.ensurePushSchema();
 });
 beforeEach(async () => {
@@ -72,6 +84,134 @@ beforeEach(async () => {
       ('sub-doctor', 'doctor', 'PARTNER', $2, NOW() - INTERVAL '1 hour')`, [patientFid, doctorFid]);
 });
 after(() => db.close());
+
+test('default reminder preferences are 60, 30 and 15 minutes; saved preferences are private and validated', async () => {
+  session = { id: 'doctor', role: 'PARTNER' };
+  assert.deepEqual((await reminderSettings.GET({}).then(r => r.json())).minutes, [60, 30, 15]);
+  assert.equal(deps['@/lib/doctor-reminders'].reminderExample(60), '9:00 AM');
+  assert.equal(deps['@/lib/doctor-reminders'].reminderExample(30), '9:30 AM');
+  assert.equal(deps['@/lib/doctor-reminders'].reminderExample(15), '9:45 AM');
+  assert.equal((await reminderSettings.PUT(request({ minutes: [120, 20], userId: 'other' }, 'PUT'))).status, 200);
+  assert.deepEqual((await reminderSettings.GET({}).then(r => r.json())).minutes, [120, 20]);
+  assert.equal((await db.query('SELECT user_id FROM doctor_reminder_preferences')).rows[0].user_id, 'doctor');
+  for (const minutes of [[0], [-5], [1441], [5.5], [15, 15], [1,2,3,4,5,6], ['15'], null]) {
+    assert.equal((await reminderSettings.PUT(request({ minutes }, 'PUT'))).status, 400);
+  }
+  session = { id: 'patient', role: 'PATIENT' };
+  assert.equal((await reminderSettings.GET({})).status, 403);
+  assert.equal((await reminderSettings.PUT(request({ minutes: [] }, 'PUT'))).status, 403);
+});
+
+test('default three reminders are scheduled at 60, 30 and 15 minute offsets without changing patient reminders', async () => {
+  await db.exec("UPDATE bookings SET appointment_starts_at = NOW() + INTERVAL '2 hours'");
+  await confirmedEvents();
+  await worker.processAppointmentPush();
+  const jobs = (await db.query(`SELECT reminder_minutes, EXTRACT(EPOCH FROM (reminder_starts_at - due_at))/60 AS offset
+    FROM appointment_push_deliveries WHERE kind = 'DOCTOR_REMINDER' ORDER BY reminder_minutes DESC`)).rows;
+  assert.deepEqual(jobs.map(job => job.reminder_minutes), [60, 30, 15]);
+  assert.deepEqual(jobs.map(job => Number(job.offset)), [60, 30, 15]);
+  assert.equal((await db.query("SELECT * FROM appointment_push_deliveries WHERE kind = 'PATIENT_REMINDER'")).rows.length, 1);
+  assert.equal(messages.length, 1);
+});
+
+test('custom reminder sends once when due, respects disabling, and skips missed offsets', async () => {
+  await db.exec("UPDATE bookings SET appointment_starts_at = NOW() + INTERVAL '19 minutes', doctor_confirmed_at = NOW() - INTERVAL '2 hours', status = 'CONFIRMED'; INSERT INTO doctor_reminder_preferences (user_id, minutes, updated_at) VALUES ('doctor', ARRAY[60,30,20,10], NOW() - INTERVAL '2 hours')");
+  await Promise.all([worker.processAppointmentPush(), worker.processAppointmentPush()]);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].data.body, /20 minutes/);
+  const jobs = (await db.query("SELECT reminder_minutes FROM appointment_push_deliveries WHERE kind = 'DOCTOR_REMINDER' ORDER BY reminder_minutes")).rows;
+  assert.deepEqual(jobs.map(job => job.reminder_minutes), [10, 20]);
+  session = { id: 'doctor', role: 'PARTNER' };
+  await reminderSettings.PUT(request({ minutes: [] }, 'PUT'));
+  await db.exec("UPDATE appointment_push_deliveries SET due_at = NOW() WHERE sent_at IS NULL");
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 1);
+});
+
+test('changed settings suppress removed reminders; restoring an already sent interval does not resend', async () => {
+  await db.exec("UPDATE bookings SET appointment_starts_at = NOW() + INTERVAL '59 minutes', doctor_confirmed_at = NOW() - INTERVAL '2 hours', status = 'CONFIRMED'");
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 1);
+  session = { id: 'doctor', role: 'PARTNER' };
+  await reminderSettings.PUT(request({ minutes: [10] }, 'PUT'));
+  await worker.processAppointmentPush();
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM appointment_push_deliveries WHERE kind = 'DOCTOR_REMINDER' AND discarded_at IS NULL AND sent_at IS NULL")).rows[0].n, 1);
+  await reminderSettings.PUT(request({ minutes: [60,30,15] }, 'PUT'));
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 1);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM appointment_push_deliveries WHERE kind = 'DOCTOR_REMINDER' AND discarded_at IS NULL AND sent_at IS NULL")).rows[0].n, 2);
+});
+
+test('GPS status changes push to the patient after the scheduled time; inaccurate and repeated pings do not repeat arrival', async () => {
+  session = { id: 'doctor', role: 'PARTNER' };
+  await db.exec("UPDATE bookings SET status = 'CONFIRMED', doctor_confirmed_at = NOW() - INTERVAL '1 hour', appointment_starts_at = NOW() - INTERVAL '5 minutes', payment_status = 'PAID', patient_lat = 13.0827, patient_lng = 80.2707");
+  const ctx = { params: Promise.resolve({ id: 'booking' }) };
+  const ping = body => locationRoute.POST({ json: async () => body }, ctx);
+  assert.equal((await ping({ lat: 13, lng: 80.2, accuracy: 20 })).status, 200);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].data.title, 'Clinician on the way');
+  await ping({ lat: 13.0827, lng: 80.2707, accuracy: 200 });
+  assert.equal(messages.length, 1);
+  await Promise.all([ping({ lat: 13.0827, lng: 80.2707, accuracy: 20 }), ping({ lat: 13.0827, lng: 80.2707, accuracy: 20 })]);
+  await ping({ lat: 13.0827, lng: 80.2707, accuracy: 20 });
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].data.title, 'Your clinician is nearby');
+  assert.ok(messages.every(message => message.fid === patientFid));
+  assert.equal((await db.query("SELECT * FROM appointment_status_events WHERE status = 'ARRIVED'")).rows.length, 1);
+  for (const status of ['IN_PROGRESS', 'COMPLETED']) {
+    assert.equal((await visitRoute.PUT({ json: async () => ({ status }) }, ctx)).status, 200);
+    await visitRoute.PUT({ json: async () => ({ status }) }, ctx);
+  }
+  assert.equal(messages.length, 4);
+  assert.equal(messages[3].data.title, 'Visit completed');
+  assert.notEqual((await visitRoute.PUT({ json: async () => ({ status: 'ON_THE_WAY' }) }, ctx)).status, 200);
+});
+
+test('status events survive a delivery failure and superseded or reassigned updates are discarded', async () => {
+  await db.exec("UPDATE bookings SET status = 'ON_THE_WAY'");
+  sendError = 'messaging/server-unavailable';
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 0);
+  sendError = null;
+  await db.exec("UPDATE bookings SET status = 'ARRIVED'; UPDATE appointment_push_deliveries SET due_at = NOW()");
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].data.title, 'Your clinician is nearby');
+  await db.exec("UPDATE bookings SET status = 'IN_PROGRESS'; UPDATE bookings SET partner_id = 'replacement'");
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 1);
+});
+
+test('status events and the booking update roll back together', async () => {
+  await db.exec('BEGIN');
+  await db.exec("UPDATE bookings SET status = 'ARRIVED'");
+  await db.exec('ROLLBACK');
+  assert.equal((await db.query('SELECT * FROM appointment_status_events')).rows.length, 0);
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 0);
+});
+
+test('migration does not repeat a 15-minute reminder sent by the previous worker', async () => {
+  await db.exec("UPDATE bookings SET status = 'CONFIRMED', doctor_confirmed_at = NOW() - INTERVAL '2 hours', appointment_starts_at = NOW() + INTERVAL '14 minutes'");
+  await db.exec(`INSERT INTO appointment_emails (booking_id, partner_id, confirmed_at, kind, due_at)
+    SELECT id, partner_id, doctor_confirmed_at, 'DOCTOR_REMINDER', appointment_starts_at - INTERVAL '15 minutes' FROM bookings;
+    INSERT INTO appointment_push_deliveries (source_key, email_id, booking_id, subscription_id, user_id, kind, due_at, sent_at)
+    SELECT 'email:' || id || ':DOCTOR_REMINDER', id, booking_id, 'sub-doctor', partner_id, kind, due_at, NOW() FROM appointment_emails`);
+  await worker.processAppointmentPush();
+  assert.equal(messages.filter(message => message.fid === doctorFid).length, 0);
+});
+
+test('late acceptance skips earlier reminders and reassignment prevents reminders to the old doctor', async () => {
+  await db.exec("UPDATE bookings SET appointment_starts_at = NOW() + INTERVAL '20 minutes'");
+  await confirmedEvents();
+  await worker.processAppointmentPush();
+  assert.deepEqual((await db.query("SELECT reminder_minutes FROM appointment_push_deliveries WHERE kind = 'DOCTOR_REMINDER'")).rows.map(row => row.reminder_minutes), [15]);
+  messages = [];
+  await db.exec("UPDATE bookings SET partner_id = 'replacement'; UPDATE appointment_push_deliveries SET due_at = NOW() WHERE sent_at IS NULL");
+  await worker.processAppointmentPush();
+  assert.equal(messages.length, 0);
+});
 async function requestEvents() {
   await db.exec(`INSERT INTO appointment_emails (booking_id, partner_id, kind, confirmed_at, due_at, sent_at)
     VALUES ('booking', 'doctor', 'PATIENT_REQUEST', NOW(), NOW(), NOW()),
@@ -137,7 +277,8 @@ test('confirmation is immediate; reminders wait and reach patient and doctor', a
   await db.exec(`UPDATE appointment_emails SET due_at = NOW() WHERE kind = 'DOCTOR_REMINDER';
     UPDATE appointment_push_deliveries SET due_at = NOW() WHERE kind LIKE '%REMINDER'`);
   await worker.processAppointmentPush();
-  assert.equal(messages.length, 3);
+  assert.equal(messages.length, 4);
+  assert.deepEqual(messages.filter(m => m.fid === doctorFid).map(m => m.data.body).sort(), [worker.pushContent('DOCTOR_REMINDER', 'booking', 15).body, worker.pushContent('DOCTOR_REMINDER', 'booking', 30).body].sort());
 });
 test('cancelled appointments suppress pending messages and notify the patient once', async () => {
   await requestEvents();

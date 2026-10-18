@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { disableBrowserPush, pushClient, rememberPush, savedPush, updatePush, type PushConfig, type PushPortal } from '@/lib/push-client';
 
 export default function PushNotifications({ portal, userId }: { portal: PushPortal; userId: string }) {
@@ -124,10 +125,10 @@ export default function PushNotifications({ portal, userId }: { portal: PushPort
     {support === 'install' && <p className="mt-2 text-xs">On iPhone or iPad (iOS 16.4+), use Share → Add to Home Screen, then open HomeDigo from that icon to enable notifications.</p>}
     {support === 'unsupported' && <p className="mt-2 text-xs">This browser does not support push notifications. Your email updates will continue.</p>}
     {message && <p role="status" className="mt-2 text-xs">{message}</p>}
-    {notice && <div role="status" className="mt-3 rounded-xl bg-teal-50 p-3">
+    {notice && createPortal(<div role="status" data-push-notice className="fixed left-4 right-4 top-4 z-[1000] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-950 shadow-xl sm:left-auto sm:w-96">
       <p className="font-bold">{notice.title}</p><p>{notice.body}</p>
       <a href={notice.path} className="mt-2 inline-block font-bold underline">View appointment</a>
-      <button type="button" onClick={() => setNotice(null)} className="ml-4 text-xs underline">Dismiss</button>
-    </div>}
+      <button type="button" onClick={() => setNotice(null)} className="ml-4 min-h-11 px-2 text-xs underline">Dismiss</button>
+    </div>, document.body)}
   </section>;
 }

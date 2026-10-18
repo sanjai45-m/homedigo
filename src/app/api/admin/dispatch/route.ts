@@ -2,6 +2,7 @@ import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, executePartnerQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
+import { processAppointmentPushSafely } from '@/lib/appointment-push';
 import { ensureDoctorScheduleSchema, readDoctorSlots } from '@/lib/doctor-schedule-store';
 
 export const maxDuration = 60;
@@ -96,6 +97,7 @@ export async function PUT(request: Request) {
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
         const booking = updateRes.rows[0];
+        await processAppointmentPushSafely(booking.id);
 
         // Notify Doctor via Email if partner assigned
         if (partnerId) {

@@ -8,6 +8,7 @@ import { PGlite } from '@electric-sql/pglite';
 const db = new PGlite();
 let user, offline, reassign;
 const dependencies = {
+  '@/lib/appointment-push': { processAppointmentPushSafely: async () => ({ sent: 0 }) },
   'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
   '@/lib/appointment-schema': { ensureAppointmentSchema: async () => {} },
   '@/lib/api-auth': { requireApiUser: async roles => !user ? { response: Response.json({}, { status: 401 }) }

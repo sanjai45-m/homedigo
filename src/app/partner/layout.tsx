@@ -8,6 +8,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signOut } from '@/components/auth/StaffAuthProvider';
 import {
   Calendar,
+  Bell,
   Navigation,
   DollarSign,
   Power,
@@ -26,6 +27,7 @@ import styles from '@/components/portals/portal.module.css';
 const partnerNavItems = [
   { href: '/partner/dashboard', label: "Today's Field Queue", icon: Calendar },
   { href: '/partner/schedule', label: 'Appointment hours', icon: Calendar },
+  { href: '/partner/reminders', label: 'Visit reminders', icon: Bell },
   { href: '/partner/earnings', label: 'Earnings & Payout Ledger', icon: DollarSign },
 ];
 

@@ -66,13 +66,14 @@ export async function PUT(
              vital_sugar = COALESCE($5, vital_sugar),
              prescription_notes = COALESCE($6, prescription_notes)
          WHERE id = $7 AND partner_id = $8
+           AND (status NOT IN ('CANCELLED', 'COMPLETED') OR $1::text IS NULL OR $1 = status)
            AND (doctor_confirmed_at IS NOT NULL AND payment_status = 'PAID' OR $1 = 'CANCELLED')
          RETURNING *`,
         [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id, user.id]
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
-        if (status === 'CANCELLED') await processAppointmentPushSafely(id);
+        if (status) await processAppointmentPushSafely(id);
         return NextResponse.json({ success: true, visit: updateRes.rows[0] });
       }
     }

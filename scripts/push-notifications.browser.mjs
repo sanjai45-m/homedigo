@@ -86,6 +86,17 @@ const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:3100';
     const patientRegistration = requests.find(r => r.path === '/api/push/subscriptions' && r.method === 'POST');
     assert.equal(patientRegistration.authorization, undefined);
     assert.equal(JSON.parse(patientRegistration.body).replace, true);
+    // A foreground arrival update must stay visible even with notification settings collapsed.
+    await page.locator('summary').filter({ hasText: 'Appointment notifications' }).click();
+    await page.evaluate(() => navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'homedigo:push', data: { title: 'Your clinician is nearby', body: 'Open HomeDigo for the arrival update.', path: '/patient/appointments/test-visit' },
+    } })));
+    const notice = page.locator('[data-push-notice]');
+    await notice.waitFor();
+    assert.equal(await notice.evaluate(element => element.parentElement === document.body), true);
+    assert.equal(await notice.getByRole('link', { name: 'View appointment' }).getAttribute('href'), '/patient/appointments/test-visit');
+    await notice.getByRole('button', { name: 'Dismiss' }).click();
+    await page.locator('summary').filter({ hasText: 'Appointment notifications' }).click();
     await page.getByRole('button', { name: 'Disable notifications', exact: true }).click();
     await page.getByRole('button', { name: 'Enable notifications', exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.__unsubscribed), 1);

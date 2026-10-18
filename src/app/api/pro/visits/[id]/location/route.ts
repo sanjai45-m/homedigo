@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { executeQuery } from '@/lib/db';
 import { coordinates, distanceKm, locationIsFresh } from '@/lib/tracking';
+import { processAppointmentPushSafely } from '@/lib/appointment-push';
+
+export const maxDuration = 60;
 
 const json = (body: unknown, status = 200) => NextResponse.json(body, {
   status, headers: { 'Cache-Control': 'private, no-store' },
@@ -74,6 +77,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     [position.lat, position.lng, body.accuracy ?? null, arrived, id, authorization.user.id]);
     if (!saved.isConnected) return json({ error: 'Location could not be saved. Please retry.' }, 503);
     if (!saved.rows.length) return json({ error: 'Appointment has changed. Refresh before sharing location.' }, 409);
+    // Status events commit with the GPS update. Repeated GPS pings do not create
+    // new events; the scheduled worker retries if immediate delivery fails.
+    if (saved.rows[0].status !== row.status) await processAppointmentPushSafely(id);
     return json({ success: true, ...position, status: saved.rows[0].status,
       updatedAt: new Date(saved.rows[0].partner_location_updated_at).toISOString(),
       patientLat: patient?.lat ?? null, patientLng: patient?.lng ?? null,

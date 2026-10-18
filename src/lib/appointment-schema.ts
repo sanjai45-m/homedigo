@@ -40,6 +40,23 @@ export function ensureAppointmentSchema() {
       `ALTER TABLE appointment_emails DROP CONSTRAINT IF EXISTS appointment_emails_kind_check,
          ADD CONSTRAINT appointment_emails_kind_check CHECK (kind IN ('PATIENT_REQUEST', 'PATIENT_CONFIRMATION', 'DOCTOR_REMINDER', 'DOCTOR_REVIEW')),
          ALTER COLUMN partner_id DROP NOT NULL`,
+      `CREATE TABLE IF NOT EXISTS appointment_status_events (
+         id BIGSERIAL PRIMARY KEY, booking_id VARCHAR(64) NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+         user_id VARCHAR(64) NOT NULL, partner_id VARCHAR(64), status TEXT NOT NULL,
+         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+       )`,
+      `CREATE INDEX IF NOT EXISTS appointment_status_events_booking_idx ON appointment_status_events (booking_id, created_at)`,
+      `CREATE OR REPLACE FUNCTION homedigo_record_visit_status() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+       BEGIN
+         IF OLD.status IS DISTINCT FROM NEW.status AND NEW.user_id IS NOT NULL
+           AND NEW.status IN ('ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED') THEN
+           INSERT INTO appointment_status_events (booking_id, user_id, partner_id, status)
+           VALUES (NEW.id, NEW.user_id, NEW.partner_id, NEW.status);
+         END IF;
+         RETURN NEW;
+       END $$`,
+      `CREATE OR REPLACE TRIGGER homedigo_visit_status_changed AFTER UPDATE OF status ON bookings
+       FOR EACH ROW EXECUTE FUNCTION homedigo_record_visit_status()`,
     ];
     for (const statement of statements) {
       const result = await executeQuery(statement);

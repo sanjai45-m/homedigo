@@ -183,14 +183,32 @@ both the frontend and notification API; Firebase Hosting and Analytics are not r
 The public `/api/push/config` endpoint returns only web configuration, or `enabled: false`
 when any required setting is missing. No subscription is created while disabled.
 
-The database role needs permission to create `push_subscriptions` and
-`appointment_push_deliveries`; these are created automatically. Requests and acceptances
-trigger immediate delivery attempts. The existing authenticated
-`/api/cron/appointment-reminders` worker also retries push delivery and sends patient and
-doctor reminders approximately 15 minutes before appointments. Keep its existing
-minute-level external schedule and `CRON_SECRET` configured; enabling Firebase alone
-does not create a scheduler. Doctor cancellations notify patients subscribed before
-the booking was created. Requests and confirmations do not replay to new subscriptions.
+The database role needs permission to create `push_subscriptions`,
+`appointment_push_deliveries`, `doctor_reminder_preferences`, `appointment_status_events`,
+and the booking status trigger; these are created automatically. Requests, acceptances,
+GPS arrival and visit status changes trigger immediate delivery attempts. The existing
+authenticated `/api/cron/appointment-reminders` worker retries push delivery and runs
+timed reminders. Keep its every-minute external schedule and `CRON_SECRET` configured;
+enabling Firebase alone does not create a scheduler. Requests and confirmations do not
+replay to new subscriptions. Status alerts require a subscription created before the event.
+
+Doctors customize push reminders in **Partner → Visit reminders**. The default is
+**60, 30 and 15 minutes before a confirmed visit** (9:00, 9:30 and 9:45 AM for a 10 AM
+visit). Up to five distinct intervals from 1–1,440 minutes can be saved; an empty list
+disables doctor visit push reminders. Settings apply to upcoming unsent reminders.
+Intervals that passed before confirmation, subscription or a settings change are skipped.
+The worker discards reminders more than five minutes late instead of replaying a backlog.
+Patient push reminders and doctor email reminders remain at 15 minutes. Arrival,
+completion, cancellation and reassignment suppress obsolete doctor reminders.
+
+Patients receive “on the way”, “nearby/arrived”, “visit started”, “visit completed” and
+cancellation alerts. GPS within 500 metres with reported accuracy of 100 metres or better
+marks an accepted, paid visit as arrived. The doctor must actively share location from
+the visit page; this does not track a phone after the browser stops sharing GPS. Booking
+status changes and their durable events commit together, so repeated GPS pings and same-status
+saves do not create repeated arrival alerts. Superseded events and events older than 15 minutes
+are discarded. Arrival/completion alerts can still send after the scheduled start time.
+Foreground alerts appear above the portal even when notification settings are collapsed.
 
 Delivery is best effort with up to ten attempts, five-minute browser delivery TTL,
 and duplicate notification tags. Ownership, roles, partner approval, password changes,
@@ -208,6 +226,10 @@ Chromium/Edge executable if Playwright's browser is not installed. Set `TEST_ORI
 to use another local port. This checks the real UI and Firebase SDK with synthetic
 subscriptions and mocked APIs. Actual device delivery still requires a configured
 deployment and a user-enabled subscription.
+
+`node scripts/doctor-reminders.browser.mjs` checks reminder defaults, examples,
+customization, validation, disabling and restoring settings on phone and desktop layouts
+using synthetic identities. No real appointments or notifications are created by these tests.
 
 First, run the development server:
 
