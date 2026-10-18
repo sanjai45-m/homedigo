@@ -3,6 +3,7 @@
 import { staffFetch } from '@/lib/staff-client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ShieldAlert,
   Plus,
@@ -104,6 +105,7 @@ export default function SuperAdminAdminsPage() {
 
     try {
       setSaving(true);
+      setFeedback(null);
       const res = await staffFetch('/api/super-admin/admins', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -195,6 +197,7 @@ export default function SuperAdminAdminsPage() {
 
         <button
           onClick={() => {
+            setFeedback(null);
             generateRandomPassword();
             setIsModalOpen(true);
           }}
@@ -205,23 +208,25 @@ export default function SuperAdminAdminsPage() {
         </button>
       </div>
 
-      {/* Feedback banner */}
-      {feedback && (
+      {/* Render above the modal and outside the page's animation/stacking context. */}
+      {feedback && createPortal(
         <div
-          className={`p-4 rounded-2xl flex items-center justify-between text-xs font-semibold shadow-xs ${
+          role={feedback.type === 'error' ? 'alert' : 'status'}
+          aria-atomic="true"
+          className={`fixed top-4 right-4 left-4 z-[100] sm:left-auto sm:w-full sm:max-w-md p-4 rounded-2xl flex items-start justify-between gap-3 text-sm font-semibold shadow-xl ${
             feedback.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
               : 'bg-rose-50 text-rose-800 border border-rose-200'
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-start gap-2">
             {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <AlertCircle className="w-4 h-4 text-rose-600" />}
-            <span>{feedback.message}</span>
+            <span className="min-w-0 break-words">{feedback.message}</span>
           </div>
-          <button onClick={() => setFeedback(null)} className="p-1 hover:opacity-80">
+          <button type="button" aria-label="Dismiss notification" onClick={() => setFeedback(null)} className="shrink-0 p-1 hover:opacity-80">
             <X className="w-3.5 h-3.5" />
           </button>
-        </div>
+        </div>, document.body
       )}
 
       {/* Search Bar */}
