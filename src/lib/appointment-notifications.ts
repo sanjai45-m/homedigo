@@ -2,6 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { executeQuery } from './db';
 import { sendAppointmentConfirmationEmail, sendAppointmentRequestEmail, sendDoctorReminderEmail, sendDoctorAppointmentEmail } from './email';
 import { ensureAppointmentSchema } from './appointment-schema';
+import { processAppointmentPushSafely } from './appointment-push';
+
+// Independent workers: an email failure cannot prevent push delivery, and vice versa.
+export async function processAppointmentNotifications(bookingId?: string) {
+  const [email, push] = await Promise.allSettled([
+    processAppointmentEmails(bookingId), processAppointmentPushSafely(bookingId),
+  ]);
+  if (email.status === 'rejected') throw email.reason;
+  return { ...email.value, push: push.status === 'fulfilled' ? push.value : { sent: 0, failed: 1 } };
+}
 
 interface EmailJob {
   id: string;

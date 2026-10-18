@@ -24,6 +24,8 @@ import {
 import AuthModal from '@/components/auth/AuthModal';
 import Logo from '@/components/shared/Logo';
 import { patientSignInUrl } from '@/lib/patient-navigation';
+import PushNotifications from '@/components/PushNotifications';
+import { disableBrowserPush } from '@/lib/push-client';
 
 export default function PatientLayout({
   children,
@@ -54,8 +56,9 @@ export default function PatientLayout({
     { href: '/patient/invoices', label: 'Invoices & Receipts', icon: FileText },
   ];
 
-  const handleSignOut = () => {
-    signOut({ callbackUrl: '/' });
+  const handleSignOut = async () => {
+    try { if (identity?.id) await disableBrowserPush('patient', identity.id); } catch { /* Local subscription revocation is also attempted. */ }
+    await signOut({ callbackUrl: '/' });
   };
 
   // Authentication has its own full-page layout, without patient portal chrome.
@@ -211,6 +214,7 @@ export default function PatientLayout({
 
         {/* Page Inner Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          {isPatient && <PushNotifications key={identity!.id} portal="patient" userId={identity!.id!} />}
           {children}
         </main>
       </div>

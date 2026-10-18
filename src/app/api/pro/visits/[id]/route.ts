@@ -2,6 +2,9 @@ import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
+import { processAppointmentPushSafely } from '@/lib/appointment-push';
+
+export const maxDuration = 60;
 
 export async function GET(
   request: Request,
@@ -69,6 +72,7 @@ export async function PUT(
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
+        if (status === 'CANCELLED') await processAppointmentPushSafely(id);
         return NextResponse.json({ success: true, visit: updateRes.rows[0] });
       }
     }

@@ -11,6 +11,8 @@ import { PGlite } from '@electric-sql/pglite';
 const db = new PGlite();
 let session, offline = false, queries = [];
 const dependencies = {
+  'firebase-admin/app': { getApps: () => [], initializeApp: () => ({}), cert: value => value },
+  'firebase-admin/messaging': { getMessaging: () => ({ send: async () => { throw new Error('Unexpected push'); } }) },
   'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
   'next-auth/next': { getServerSession: async () => session },
   'next/headers': { headers: async () => authHeaders() },
@@ -47,6 +49,7 @@ function load(file) {
 const guard = load('src/lib/api-auth.ts').requireApiUser;
 const roles = ['PATIENT', 'PARTNER', 'ADMIN', 'SUPER_ADMIN'];
 const publicRoutes = new Set(['services/route.ts:GET', 'doctors/route.ts:GET', 'specialities/route.ts:GET',
+  'push/config/route.ts:GET',
   'patient/payment/route.ts:GET', 'auth/register/route.ts:POST', 'auth/password-reset/route.ts:POST', 'partner/register/route.ts:POST']);
 const privateRoutes = [];
 for (const file of readdirSync('src/app/api', { recursive: true }).filter(f => f.endsWith('route.ts'))) {
@@ -62,7 +65,7 @@ for (const file of readdirSync('src/app/api', { recursive: true }).filter(f => f
     const allowed = path.startsWith('super-admin/') || path.startsWith('health/') ? ['SUPER_ADMIN']
       : path.startsWith('admin/') || path.startsWith('specialities/') ? ['ADMIN','SUPER_ADMIN']
       : path.startsWith('patient/') ? ['PATIENT']
-      : path.startsWith('bookings/') || (path.includes('/location/') && node.name.text === 'GET') ? ['PATIENT','PARTNER']
+      : path.startsWith('bookings/') || path.startsWith('push/subscriptions/') || (path.includes('/location/') && node.name.text === 'GET') ? ['PATIENT','PARTNER']
       : path.startsWith('pro/') ? ['PARTNER'] : null;
     assert.ok(allowed, `New API needs an explicit policy: ${name}`);
     privateRoutes.push({ name, method: node.name.text, allowed, handler: load('src/app/api/' + path)[node.name.text] });

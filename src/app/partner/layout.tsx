@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import PortalBrand from '@/components/portals/PortalBrand';
 import PortalHeader from '@/components/portals/PortalHeader';
+import PushNotifications from '@/components/PushNotifications';
 import styles from '@/components/portals/portal.module.css';
 
 const partnerNavItems = [
@@ -259,7 +260,10 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
       {/* Main Content Area */}
       <main id="portal-content" className={styles.workspace}>
         <PortalHeader label="Clinician workspace" />
-        <div key={pathname} className={styles.page}>{accessError ? <p role="alert" className="rounded-xl bg-amber-50 p-6 text-amber-900">{accessError}</p> : children}</div>
+        <div key={pathname} className={styles.page}>{accessError ? <p role="alert" className="rounded-xl bg-amber-50 p-6 text-amber-900">{accessError}</p> : <>
+          {session?.user?.id && <PushNotifications key={session.user.id} portal="partner" userId={session.user.id} />}
+          {children}
+        </>}</div>
       </main>
     </div>
   );

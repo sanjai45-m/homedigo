@@ -152,6 +152,63 @@ Verify with `node --test scripts/email.test.mjs scripts/appointments.test.mjs` a
 `npm run build`. Real mobile app launching and actual email inbox delivery require a
 configured deployment and device checks; isolated tests use no real payments or emails.
 
+## Optional Firebase browser notifications
+
+Patients and approved doctors can enable appointment notifications from their portal.
+Permission is requested only after clicking Enable. Each portal uses a separate browser
+installation; Disable and explicit sign-out remove its subscription. Notifications
+contain generic appointment updates, with details available only after signing in.
+Email delivery and the checkout submission notice continue independently.
+
+Configure all eight variables in section 7 of `.env.example`: `WEB_PUSH_ENABLED=true`,
+`FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`, `FIREBASE_MESSAGING_SENDER_ID`,
+`FIREBASE_WEB_APP_ID`, `FIREBASE_WEB_VAPID_KEY`, `FIREBASE_CLIENT_EMAIL`, and
+`FIREBASE_PRIVATE_KEY`. Use the public VAPID key from Firebase Project settings >
+Cloud Messaging > Web Push certificates. The service-account email and private key
+are server-only; never prefix them with `NEXT_PUBLIC_` or commit the downloaded JSON.
+The private key accepts literal `\n` escapes or actual newlines.
+
+For Vercel, copy the values to the project's Production environment and redeploy.
+To prepare a Firebase-only import file from local configuration and a newly downloaded
+service-account key, run:
+
+```powershell
+node scripts/prepare-firebase-env.mjs "C:/path/to/replacement-service-account.json"
+```
+
+Import the resulting Git-ignored `.env.firebase.vercel.local` in Vercel's Environment
+Variables settings. Without a JSON path, the helper deliberately leaves the private key
+blank. Revoke any exposed key before using a replacement. Existing Vercel hosting serves
+both the frontend and notification API; Firebase Hosting and Analytics are not required.
+The public `/api/push/config` endpoint returns only web configuration, or `enabled: false`
+when any required setting is missing. No subscription is created while disabled.
+
+The database role needs permission to create `push_subscriptions` and
+`appointment_push_deliveries`; these are created automatically. Requests and acceptances
+trigger immediate delivery attempts. The existing authenticated
+`/api/cron/appointment-reminders` worker also retries push delivery and sends patient and
+doctor reminders approximately 15 minutes before appointments. Keep its existing
+minute-level external schedule and `CRON_SECRET` configured; enabling Firebase alone
+does not create a scheduler. Doctor cancellations notify patients subscribed before
+the booking was created. Requests and confirmations do not replay to new subscriptions.
+
+Delivery is best effort with up to ten attempts, five-minute browser delivery TTL,
+and duplicate notification tags. Ownership, roles, partner approval, password changes,
+appointment status and assignment are checked again before sending. Registrations stop
+receiving after 30 days without a portal refresh; invalid installations are removed.
+No private pages are cached by the service workers. iPhone/iPad users need iOS 16.4+
+and must add HomeDigo to the Home Screen before enabling notifications. Other supported
+browsers require HTTPS (localhost also works), permission and OS notification access.
+
+Verify the database queue and API permissions with
+`node --test scripts/push-notifications.test.mjs scripts/api-authorization.test.mjs`.
+For the browser flow, start the app on port 3100, then run
+`node scripts/push-notifications.browser.mjs`; set `BROWSER_EXECUTABLE` to a local
+Chromium/Edge executable if Playwright's browser is not installed. Set `TEST_ORIGIN`
+to use another local port. This checks the real UI and Firebase SDK with synthetic
+subscriptions and mocked APIs. Actual device delivery still requires a configured
+deployment and a user-enabled subscription.
+
 First, run the development server:
 
 ```bash

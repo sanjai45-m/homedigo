@@ -32,6 +32,8 @@ function harness(path, globals = {}, dependencies = {}, extra = '') {
     ...globals, require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
+      if (name === '@/components/PushNotifications') return () => null;
+      if (name === '@/lib/push-client') return { disableBrowserPush: async () => {} };
       if (name in dependencies) return dependencies[name];
       throw new Error(`Missing test dependency: ${name}`);
     },

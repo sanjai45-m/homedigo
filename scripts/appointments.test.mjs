@@ -15,6 +15,8 @@ let smtpFails;
 let databaseFails;
 
 const dependencies = {
+  './appointment-push': { processAppointmentPushSafely: async () => ({ enabled: false, sent: 0, failed: 0 }) },
+  '@/lib/appointment-push': { processAppointmentPushSafely: async () => ({ enabled: false, sent: 0, failed: 0 }) },
   'node:crypto': crypto,
   'next/server': { NextResponse: { json: (body, options) => ({ body, status: options?.status || 200 }) } },
   'next-auth/next': { getServerSession: async () => session },

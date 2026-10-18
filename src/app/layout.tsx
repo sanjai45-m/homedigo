@@ -21,6 +21,8 @@ const libreFranklin = Libre_Franklin({
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   applicationName: siteName,
+  appleWebApp: { capable: true, title: 'HomeDigo', statusBarStyle: 'default' },
+  icons: { apple: '/icons/apple-touch-icon.png' },
   title: { default: siteName, template: `%s | ${siteName}` },
   description: homeDescription,
   ...socialMetadata,

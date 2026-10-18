@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
-import { processAppointmentEmails } from '@/lib/appointment-notifications';
+import { processAppointmentNotifications as processAppointmentEmails } from '@/lib/appointment-notifications';
 import { isEmailAddress } from '@/lib/email';
 
 export const maxDuration = 60;

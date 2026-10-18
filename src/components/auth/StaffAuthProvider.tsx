@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { usePathname, useRouter } from 'next/navigation';
 import type { Session } from 'next-auth';
 import { readStaffToken, staffPortal, staffSessionEvent, storeStaffToken, type StaffPortal } from '@/lib/staff-client';
+import { disableBrowserPush, savedPush } from '@/lib/push-client';
 
 type StaffSession = Session & { user: NonNullable<Session['user']> & { id: string; role: string } };
 type SessionState = { data: StaffSession | null; status: 'loading' | 'authenticated' | 'unauthenticated' };
@@ -25,6 +26,14 @@ export async function signIn(_provider: string, options: { email: string; passwo
 
 export async function signOut({ callbackUrl }: { callbackUrl: string }) {
   const portal = staffPortal(window.location.pathname);
+  if (portal === 'partner') {
+    try {
+      const response = await fetch('/api/auth/staff', { headers: { Authorization: `Bearer ${readStaffToken(portal) || ''}` }, credentials: 'omit' });
+      const session = await response.json();
+      const saved = savedPush('partner');
+      if (response.ok && saved?.userId === session.user?.id) await disableBrowserPush('partner', session.user.id);
+    } catch { /* Continue sign-out if the notification service is unavailable. */ }
+  }
   if (portal) storeStaffToken(portal, null);
   window.location.assign(callbackUrl);
 }

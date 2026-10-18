@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { appointmentDate, appointmentStart } from '@/lib/appointment-time';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
-import { processAppointmentEmails } from '@/lib/appointment-notifications';
+import { processAppointmentNotifications as processAppointmentEmails } from '@/lib/appointment-notifications';
 import { validateReceipt } from '@/lib/payment';
 import { isEmailAddress } from '@/lib/email';
 

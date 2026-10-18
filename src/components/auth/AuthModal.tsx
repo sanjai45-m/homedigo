@@ -4,6 +4,7 @@ import React, { useState, Suspense } from 'react';
 import { signIn, signOut, useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import Image from 'next/image';
+import { disableBrowserPush } from '@/lib/push-client';
 import { 
   X, 
   ShieldCheck, 
@@ -112,7 +113,11 @@ function AuthModalContent({ isOpen, onClose, defaultRole = 'PATIENT' }: AuthModa
 
               <div className="flex gap-3">
                 <button
-                  onClick={() => signOut()}
+                  onClick={async () => {
+                    const identity = session.user as { id?: string; role?: string } | undefined;
+                    try { if (identity?.id && identity.role === 'PATIENT') await disableBrowserPush('patient', identity.id); } catch {}
+                    await signOut();
+                  }}
                   className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 font-medium text-sm transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
