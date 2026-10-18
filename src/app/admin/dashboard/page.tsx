@@ -5,7 +5,6 @@ import { staffFetch } from '@/lib/staff-client';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  TrendingUp,
   DollarSign,
   Radio,
   UserCheck,
@@ -23,7 +22,6 @@ export default function AdminDashboardPage() {
     totalBookings: 0,
     activeDispatches: 0,
     completedVisits: 0,
-    totalRevenue: 0,
     activePartners: 0,
     totalPartners: 0,
     totalServices: 0,
@@ -95,21 +93,21 @@ export default function AdminDashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-xs hover:shadow-md transition-all">
           <div className="flex items-center justify-between text-slate-500 text-xs font-bold">
-            <span>Total Gross Revenue</span>
+            <span>Total Bookings</span>
             <div className="p-2 rounded-xl bg-emerald-50 text-emerald-600">
-              <DollarSign className="w-4 h-4" />
+              <Layers className="w-4 h-4" />
             </div>
           </div>
           {loading ? (
             <div className="h-8 w-28 bg-slate-100 animate-pulse rounded-lg mt-3" />
           ) : (
             <div className="text-2xl font-black text-slate-900 font-heading mt-3">
-              ₹{metrics.totalRevenue.toLocaleString('en-IN')}
+              {metrics.totalBookings.toLocaleString('en-IN')}
             </div>
           )}
           <div className="text-xs text-emerald-600 mt-1.5 flex items-center gap-1 font-semibold">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span>Live DB Telemetry</span>
+            <Activity className="w-3.5 h-3.5" />
+            <span>All platform bookings</span>
           </div>
         </div>
 
