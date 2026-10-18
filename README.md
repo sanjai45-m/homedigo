@@ -210,6 +210,17 @@ saves do not create repeated arrival alerts. Superseded events and events older 
 are discarded. Arrival/completion alerts can still send after the scheduled start time.
 Foreground alerts appear above the portal even when notification settings are collapsed.
 
+Cancellation and decline actions open an optional reason field (up to 500 characters)
+before confirmation. The patient and assigned doctor receive cancellation emails and
+Firebase pushes with that reason; a blank field uses a generic cancellation message.
+The form explains that the text will be shared in notifications. Reasons are saved on
+the booking and snapshotted in its status event. The cancellation, event and email jobs
+commit atomically; the existing scheduler retries failed delivery. Emails escape user
+text, and repeat cancellation requests cannot overwrite the reason or queue duplicates.
+Cancelled appointment details show the saved reason after a refresh.
+`node scripts/cancellation.browser.mjs` checks both portals at mobile and desktop widths
+using synthetic bookings; no real appointments are cancelled by the test.
+
 Delivery is best effort with up to ten attempts, five-minute browser delivery TTL,
 and duplicate notification tags. Ownership, roles, partner approval, password changes,
 appointment status and assignment are checked again before sending. Registrations stop

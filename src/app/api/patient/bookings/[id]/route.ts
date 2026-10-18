@@ -1,6 +1,11 @@
 import { requireApiUser } from '@/lib/api-auth';
 import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
+import { ensureAppointmentSchema } from '@/lib/appointment-schema';
+import { cancellationReason } from '@/lib/cancellation';
+import { processAppointmentNotificationsSafely } from '@/lib/appointment-notifications';
+
+export const maxDuration = 60;
 
 export async function GET(
   request: Request,
@@ -45,11 +50,18 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const userId = (session?.user as { id?: string })?.id;
   if (!userId) return NextResponse.json({ error: 'Please sign in.' }, { status: 401 });
   const { id } = await params;
-  const body = await request.json();
+  let body, reason;
+  try { body = await request.json(); reason = cancellationReason(body?.cancellationReason); }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : 'Invalid cancellation.' }, { status: 400 }); }
+  if (!body) return NextResponse.json({ error: 'Invalid cancellation.' }, { status: 400 });
   if (body.status !== 'CANCELLED') return NextResponse.json({ error: 'Patients can only cancel appointments.' }, { status: 403 });
-  const result = await executeQuery(`UPDATE bookings SET status = 'CANCELLED'
-    WHERE (id = $1 OR booking_number = $1) AND user_id = $2 AND status IN ('PENDING', 'ASSIGNED', 'CONFIRMED') RETURNING *`, [id, userId]);
-  if (!result.isConnected) return NextResponse.json({ error: 'Appointment unavailable.' }, { status: 503 });
-  if (!result.rows.length) return NextResponse.json({ error: 'Appointment cannot be cancelled.' }, { status: 409 });
-  return NextResponse.json({ success: true, booking: result.rows[0] });
+  try {
+    await ensureAppointmentSchema();
+    const result = await executeQuery(`UPDATE bookings SET status = 'CANCELLED', cancellation_reason = $3
+      WHERE (id = $1 OR booking_number = $1) AND user_id = $2 AND status IN ('PENDING', 'ASSIGNED', 'CONFIRMED') RETURNING *`, [id, userId, reason]);
+    if (!result.isConnected) return NextResponse.json({ error: 'Appointment unavailable.' }, { status: 503 });
+    if (!result.rows.length) return NextResponse.json({ error: 'Appointment cannot be cancelled.' }, { status: 409 });
+    await processAppointmentNotificationsSafely(result.rows[0].id);
+    return NextResponse.json({ success: true, booking: result.rows[0] });
+  } catch { return NextResponse.json({ error: 'Appointment unavailable. Please retry.' }, { status: 503 }); }
 }

@@ -32,11 +32,12 @@ const joins = `JOIN push_subscriptions s ON s.id = d.subscription_id
   LEFT JOIN appointment_status_events v ON v.id = d.event_id AND v.booking_id = b.id
   LEFT JOIN doctor_reminder_preferences prefs ON prefs.user_id = b.partner_id`;
 
-export function pushContent(kind: string, bookingId: string, reminderMinutes = 15) {
+export function pushContent(kind: string, bookingId: string, reminderMinutes = 15, cancellationReason?: string | null) {
   const messages: Record<string, [string, string]> = {
     PATIENT_REQUEST: ['Request received', 'Your appointment request is awaiting review.'],
     PATIENT_CONFIRMATION: ['Appointment accepted', 'Your appointment has been accepted. Open HomeDigo for details.'],
     PATIENT_CANCELLED: ['Appointment cancelled', 'Your appointment request was declined or cancelled. Open HomeDigo for details.'],
+    DOCTOR_CANCELLED: ['Appointment cancelled', 'Your appointment was cancelled. Open HomeDigo for details.'],
     PATIENT_REMINDER: ['Upcoming appointment', 'Your appointment starts in about 15 minutes.'],
     PATIENT_ON_THE_WAY: ['Clinician on the way', 'Your clinician has started travelling to your visit. Open HomeDigo to track progress.'],
     PATIENT_ARRIVED: ['Your clinician is nearby', 'Your clinician has reached the area near your visit address. Open HomeDigo for the arrival update.'],
@@ -47,7 +48,7 @@ export function pushContent(kind: string, bookingId: string, reminderMinutes = 1
   };
   const message = messages[kind];
   if (!message) throw new Error('Unknown notification kind');
-  return { title: message[0], body: message[1],
+  return { title: message[0], body: kind.endsWith('_CANCELLED') && cancellationReason ? `Reason: ${cancellationReason}` : message[1],
     path: kind.startsWith('PATIENT_') ? `/patient/appointments/${encodeURIComponent(bookingId)}` : `/partner/visit/${encodeURIComponent(bookingId)}` };
 }
 
@@ -75,13 +76,17 @@ export async function processAppointmentPush(bookingId?: string) {
     JOIN push_subscriptions s ON s.user_id = recipients.user_id
     WHERE b.appointment_starts_at > NOW() AND s.updated_at > NOW() - INTERVAL '30 days'
       AND s.created_at <= CASE WHEN e.kind = 'DOCTOR_REMINDER' THEN b.appointment_starts_at - INTERVAL '15 minutes' ELSE e.confirmed_at END
-      AND ($1::text IS NULL OR b.id = $1)
+      AND e.event_id IS NULL AND ($1::text IS NULL OR b.id = $1)
     ON CONFLICT (source_key, subscription_id, user_id) DO NOTHING`, [bookingId || null]);
   await query(`INSERT INTO appointment_push_deliveries
     (source_key, event_id, booking_id, subscription_id, user_id, kind, due_at)
-    SELECT 'status:' || v.id, v.id, b.id, s.id, b.user_id, 'PATIENT_' || v.status, v.created_at
+    SELECT 'status:' || v.id, v.id, b.id, s.id, s.user_id, recipients.kind, v.created_at
     FROM appointment_status_events v JOIN bookings b ON b.id = v.booking_id
-    JOIN push_subscriptions s ON s.user_id = b.user_id AND s.role = 'PATIENT'
+    CROSS JOIN LATERAL (
+      SELECT b.user_id AS user_id, 'PATIENT_' || v.status AS kind
+      UNION ALL SELECT b.partner_id, 'DOCTOR_CANCELLED' WHERE v.status = 'CANCELLED'
+    ) recipients
+    JOIN push_subscriptions s ON s.user_id = recipients.user_id
     WHERE v.status = b.status AND v.user_id = b.user_id AND v.partner_id IS NOT DISTINCT FROM b.partner_id
       AND v.created_at > NOW() - INTERVAL '15 minutes' AND s.created_at <= v.created_at
       AND s.updated_at > NOW() - INTERVAL '30 days' AND ($1::text IS NULL OR b.id = $1)
@@ -128,15 +133,15 @@ export async function processAppointmentPush(bookingId?: string) {
     ) SELECT c.*, s.fid FROM claimed c JOIN push_subscriptions s ON s.id = c.subscription_id`, [bookingId || null, lease]);
 
   const results = await Promise.all(jobs.map(async job => {
-    const current = await query(`SELECT d.id FROM appointment_push_deliveries d ${joins}
+    const current = await query<{ cancellation_reason: string | null }>(`SELECT d.id, v.cancellation_reason FROM appointment_push_deliveries d ${joins}
       WHERE d.id = $1 AND d.lease_token = $2 AND ${eligible}`, [job.id, lease]);
     if (!current.length) {
       await query('UPDATE appointment_push_deliveries SET discarded_at = NOW(), lease_token = NULL, lease_until = NULL WHERE id = $1 AND lease_token = $2', [job.id, lease]);
       return 'skipped';
     }
     try {
-      const content = pushContent(job.kind, job.booking_id, job.reminder_minutes ?? 15);
-      // Generic messages only: no patient names, addresses, conditions, receipts or auth tokens.
+      const content = pushContent(job.kind, job.booking_id, job.reminder_minutes ?? 15, current[0].cancellation_reason);
+      // Cancellation text is explicitly shared by the cancelling user. Other messages stay generic.
       await firebaseMessaging().send({ fid: job.fid, data: { ...content, tag: `homedigo-${job.id}` },
         webpush: { headers: { TTL: '300', Urgency: 'normal' } } });
       await query('UPDATE appointment_push_deliveries SET sent_at = NOW(), lease_token = NULL, lease_until = NULL, last_error = NULL WHERE id = $1 AND lease_token = $2', [job.id, lease]);

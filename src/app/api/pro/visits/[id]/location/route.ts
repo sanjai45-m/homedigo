@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     await ensureAppointmentSchema();
     const { id } = await params;
     const result = await executeQuery(`SELECT b.partner_lat, b.partner_lng, b.patient_lat, b.patient_lng,
-      b.partner_location_updated_at, b.partner_location_accuracy, b.status, a.lat AS address_lat, a.lng AS address_lng
+      b.partner_location_updated_at, b.partner_location_accuracy, b.status, b.cancellation_reason, a.lat AS address_lat, a.lng AS address_lng
       FROM bookings b LEFT JOIN addresses a ON b.address_id = a.id AND a.user_id = b.user_id
       WHERE (b.id = $1 OR b.booking_number = $1)
         AND (($3 = 'PATIENT' AND b.user_id = $2) OR ($3 = 'PARTNER' AND b.partner_id = $2))`,
@@ -34,7 +34,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const accurate = row.partner_location_accuracy != null && Number(row.partner_location_accuracy) <= 100;
     return json({ lat: doctor?.lat ?? null, lng: doctor?.lng ?? null,
       patientLat: patient?.lat ?? null, patientLng: patient?.lng ?? null,
-      status: row.status, updatedAt, accuracy: row.partner_location_accuracy, isLive,
+      status: row.status, cancellationReason: row.cancellation_reason, updatedAt, accuracy: row.partner_location_accuracy, isLive,
       distanceKm: distance === null ? null : Number(distance.toFixed(2)),
       isNearby: Boolean(isLive && accurate && distance !== null && distance <= 2.5),
       isImmediate: Boolean(isLive && accurate && distance !== null && distance <= 0.4),

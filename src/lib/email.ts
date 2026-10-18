@@ -141,6 +141,8 @@ export interface AppointmentEmailParams {
   serviceTitle: string;
   scheduledDate: string;
   scheduledTimeSlot: string;
+  cancellationReason?: string | null;
+  recipientRole?: 'PARTNER' | 'PATIENT';
 }
 
 export function isEmailAddress(value: unknown): value is string {
@@ -159,16 +161,22 @@ export async function sendDoctorReminderEmail(params: AppointmentEmailParams): P
   return sendAppointmentUpdate(params, 'reminder');
 }
 
-function sendAppointmentUpdate(params: AppointmentEmailParams, kind: 'request' | 'confirmation' | 'reminder'): Promise<EmailResult> {
+export async function sendAppointmentCancellationEmail(params: AppointmentEmailParams): Promise<EmailResult> {
+  return sendAppointmentUpdate(params, 'cancellation');
+}
+
+function sendAppointmentUpdate(params: AppointmentEmailParams, kind: 'request' | 'confirmation' | 'reminder' | 'cancellation'): Promise<EmailResult> {
   const reminder = kind === 'reminder';
   const portalUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'https://homedigo.vercel.app').replace(/\/$/, '');
-  const title = kind === 'request' ? 'Your appointment request has been received' : reminder ? 'Your appointment is starting soon' : 'Your appointment is confirmed';
-  const message = kind === 'request'
+  const title = kind === 'cancellation' ? 'Your appointment has been cancelled' : kind === 'request' ? 'Your appointment request has been received' : reminder ? 'Your appointment is starting soon' : 'Your appointment is confirmed';
+  const message = kind === 'cancellation'
+    ? `This appointment has been cancelled. ${params.cancellationReason ? `Reason: ${params.cancellationReason}` : 'No reason was provided.'}`
+    : kind === 'request'
     ? 'We received your appointment request and payment receipt. Payment verification and doctor approval are pending. Your appointment is not confirmed yet; we will email you after approval.'
     : reminder
     ? 'Your confirmed appointment starts soon. Please prepare for your visit at the scheduled time below.'
     : `${params.doctorName} has confirmed availability for your appointment.`;
-  const path = reminder ? '/partner/dashboard' : `/patient/appointments/${encodeURIComponent(params.bookingId)}`;
+  const path = reminder ? '/partner/dashboard' : params.recipientRole === 'PARTNER' ? `/partner/visit/${encodeURIComponent(params.bookingId)}` : `/patient/appointments/${encodeURIComponent(params.bookingId)}`;
   const text = `${title}\n\n${message}\nBooking: ${params.bookingNumber}\nPatient: ${params.patientName}\nDoctor: ${params.doctorName}\nService: ${params.serviceTitle}\nDate: ${params.scheduledDate}\nTime: ${params.scheduledTimeSlot} (IST)\n\nView appointment: ${portalUrl}${path}`;
   return sendEmail({
     to: params.to,

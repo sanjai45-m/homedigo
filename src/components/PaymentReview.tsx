@@ -1,13 +1,14 @@
 'use client';
 
 import { staffFetch } from '@/lib/staff-client';
+import CancelAppointment, { CancellationNotice } from '@/components/appointments/CancelAppointment';
 
 import { useEffect, useState } from 'react';
 
 type ReviewVisit = {
   id: string; patient_name: string; patient_age?: number; patient_gender?: string;
   patient_email?: string; patient_phone?: string; blood_group?: string; medical_notes?: string;
-  address_text: string; clinical_instructions?: string; total_amount: number; payment_status: string;
+  address_text: string; clinical_instructions?: string; total_amount: number; payment_status: string; cancellation_reason?: string | null;
   payment_ref?: string; payment_method?: string; has_receipt?: boolean; doctor_confirmed_at?: string; status: string;
 };
 
@@ -22,9 +23,12 @@ export default function PaymentReview({ visit, onAccepted }: { visit: ReviewVisi
   useEffect(() => {
     const controller = new AbortController();
     let objectUrl: string | undefined;
-    setReceiptUrl(null);
-    setReceiptLoaded(false);
-    setVerified(false);
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      setReceiptUrl(null);
+      setReceiptLoaded(false);
+      setVerified(false);
+    });
     if (visit.has_receipt) {
       void (async () => {
         try {
@@ -51,18 +55,6 @@ export default function PaymentReview({ visit, onAccepted }: { visit: ReviewVisi
       if (!response.ok) throw new Error(data.error || 'Could not accept appointment.');
       onAccepted({ ...visit, ...data.visit });
       setMessage(data.message);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
-    finally { setSaving(false); }
-  }
-  async function reject() {
-    setSaving(true); setError('');
-    try {
-      const response = await staffFetch(`/api/pro/visits/${encodeURIComponent(visit.id)}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'CANCELLED' }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Could not decline appointment.');
-      onAccepted({ ...visit, ...data.visit }); setMessage('Appointment declined. No booking confirmation will be sent.');
     } catch (e) { setError(e instanceof Error ? e.message : 'Please try again.'); }
     finally { setSaving(false); }
   }
@@ -93,10 +85,11 @@ export default function PaymentReview({ visit, onAccepted }: { visit: ReviewVisi
       </label>}
       <div className="flex flex-wrap gap-3">
         <button type="button" onClick={() => void accept()} disabled={saving || (visit.payment_status !== 'PAID' && (!verified || !receiptLoaded))} className="rounded-xl bg-teal-700 px-5 py-3 text-white font-bold disabled:opacity-50">{saving ? 'Saving…' : 'Verify Payment & Accept Appointment'}</button>
-        <button type="button" onClick={() => void reject()} disabled={saving} className="rounded-xl border border-red-200 px-5 py-3 text-red-700 font-bold disabled:opacity-50">Decline Appointment</button>
       </div>
       <p className="text-xs text-slate-500">Acceptance sends the patient a booking confirmation email.</p>
     </div>}
+    {visit.status === 'CANCELLED' ? <CancellationNotice reason={visit.cancellation_reason} /> : visit.status !== 'COMPLETED' && !saving &&
+      <CancelAppointment key={visit.id} staff endpoint={`/api/pro/visits/${encodeURIComponent(visit.id)}`} label={canReview ? 'Decline appointment' : 'Cancel appointment'} onCancelled={updated => onAccepted({ ...visit, ...updated })} />}
     {message && <p role="status" className="text-sm text-teal-800">{message}</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
   </section>;

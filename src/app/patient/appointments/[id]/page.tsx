@@ -17,12 +17,11 @@ import {
   FileText, 
   Download, 
   Share2, 
-  Sparkles,
   RefreshCw,
   FileBadge,
-  Check,
-  Loader2
+  Check
 } from 'lucide-react';
+import CancelAppointment, { CancellationNotice } from '@/components/appointments/CancelAppointment';
 import { coordinates } from '@/lib/tracking';
 import { generateInvoicePdf } from '@/lib/pdf-generator';
 
@@ -38,7 +37,6 @@ export default function AppointmentDetailPage() {
   const [booking, setBooking] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'TELEMETRY' | 'VITALS' | 'INVOICE'>('TELEMETRY');
-  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
   // Live partner GPS position polled from server
   const [trackingData, setTrackingData] = useState<{ lat: number | null; lng: number | null; patientLat: number | null; patientLng: number | null; updatedAt: string | null; isLive: boolean } | null>(null);
   const [trackingError, setTrackingError] = useState('');
@@ -114,7 +112,7 @@ export default function AppointmentDetailPage() {
           playProximityChime(); hasChimed.current = true;
         }
         if (data.status) {
-          setBooking((prev: any) => prev ? { ...prev, status: data.status } : prev);
+          setBooking((prev: any) => prev ? { ...prev, status: data.status, cancellation_reason: data.cancellationReason ?? prev.cancellation_reason } : prev);
           if (['COMPLETED', 'CANCELLED'].includes(data.status)) clearInterval(interval);
         }
       } catch (error) {
@@ -128,27 +126,6 @@ export default function AppointmentDetailPage() {
     void poll();
     return () => { active = false; clearInterval(interval); controller?.abort(); };
   }, [id]);
-
-  const updateBookingStatus = async (newStatus: string) => {
-    setUpdatingStatus(newStatus);
-    try {
-      const res = await fetch(`/api/patient/bookings/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: newStatus,
-        }),
-      });
-      const data = await res.json();
-      if (data.booking) {
-        setBooking((prev: any) => ({ ...prev, ...data.booking }));
-      }
-    } catch (err) {
-      console.error('Failed to update status:', err);
-    } finally {
-      setUpdatingStatus(null);
-    }
-  };
 
   if (loading) {
     return (
@@ -223,6 +200,7 @@ export default function AppointmentDetailPage() {
         <p className="mt-1">{b.status === 'CANCELLED' ? 'Contact the clinic about any payment already made.' : 'Your appointment is not confirmed yet. Your doctor will review your payment and patient details. We will email you when the appointment is accepted.'}</p>
         <a href={`/api/bookings/${encodeURIComponent(b.id)}/receipt`} target="_blank" rel="noreferrer" className="inline-block mt-2 font-bold underline">View submitted receipt</a>
       </div>}
+      {b.status === 'CANCELLED' && <CancellationNotice reason={b.cancellation_reason} />}
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -337,34 +315,9 @@ export default function AppointmentDetailPage() {
           })}
         </div>
 
-        {/* Interactive Status Simulation Bar */}
-        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 text-xs">
-          <span className="font-bold text-slate-600 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-teal-600" />
-            <span>Interactive State Simulator:</span>
-          </span>
-
-          <div className="flex flex-wrap gap-1.5">
-            {['ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED'].map((st) => {
-              const isThisUpdating = updatingStatus === st;
-              return (
-                <button
-                  key={st}
-                  onClick={() => updateBookingStatus(st)}
-                  disabled={Boolean(updatingStatus)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    b.status === st
-                      ? 'bg-teal-700 text-white shadow-xs'
-                      : 'bg-white hover:bg-slate-200 text-slate-700 border border-slate-200 disabled:opacity-50'
-                  }`}
-                >
-                  {isThisUpdating && <Loader2 className="w-3 h-3 animate-spin" />}
-                  <span>Set: {st.replace(/_/g, ' ')}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        {['PENDING', 'ASSIGNED', 'CONFIRMED'].includes(b.status) && <CancelAppointment key={b.id}
+          endpoint={`/api/patient/bookings/${encodeURIComponent(b.id)}`}
+          onCancelled={updated => setBooking((previous: any) => ({ ...previous, ...updated }))} />}
       </div>
 
       {/* Main Details Grid */}

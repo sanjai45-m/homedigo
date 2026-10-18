@@ -79,6 +79,7 @@ const bookings = load('src/app/api/patient/bookings/route.ts');
 const hoursRoute = load('src/app/api/pro/schedule/route.ts');
 const slotsRoute = load('src/app/api/doctors/[id]/slots/route.ts');
 const availabilityRoute = load('src/app/api/pro/availability/route.ts');
+dependencies['@/lib/cancellation'] = load('src/lib/cancellation.ts');
 const dispatch = load('src/app/api/admin/dispatch/route.ts').PUT;
 const receiptRoute = load('src/app/api/bookings/[id]/receipt/route.ts').GET;
 const doctorVisit = load('src/app/api/pro/visits/[id]/route.ts');
@@ -342,8 +343,9 @@ test('cancelled, completed, in-progress, past and reassigned appointments do not
   await db.exec(`UPDATE bookings SET status = id WHERE id IN ('CANCELLED', 'COMPLETED', 'IN_PROGRESS');
     UPDATE bookings SET appointment_starts_at = NOW() - INTERVAL '1 second' WHERE id = 'PAST';
     UPDATE bookings SET partner_id = 'doctor2' WHERE id = 'REASSIGNED'`);
-  assert.equal((await runCron()).body.sent, 0);
-  assert.equal(messages.length, 5);
+  assert.equal((await runCron()).body.sent, 2);
+  assert.equal(messages.length, 7);
+  assert.equal(messages.filter(m => /starting soon/.test(m.subject)).length, 0);
 });
 
 test('reassignment invalidates old jobs and requires confirmation by the new doctor', async () => {
@@ -420,7 +422,7 @@ test('booking uses the signed-in patient and remains pending with normalized IST
   assert.equal(response.body.booking.user_id, 'patient');
   assert.equal(response.body.booking.status, 'PENDING');
   assert.equal(new Date(response.body.booking.appointment_starts_at).toISOString(), time.appointmentStart(time.appointmentDate('Tomorrow'), '10:00 AM - 11:00 AM'));
-  assert.equal(messages[0].to, 'doctor@test.local');
+  assert.ok(messages.some(message => message.to === 'doctor@test.local'));
 });
 
 test('new booking rejects past times and sends only the patient acknowledgement when no doctor is assigned', async () => {
@@ -454,16 +456,16 @@ test('receipt booking acknowledges the patient and notifies the doctor; approval
   assert.equal(created.body.booking.payment_ref, null);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
   assert.equal(messages.length, 2);
-  assert.equal(messages[0].to, 'doctor@test.local');
-  assert.ok(messages[0].html.includes(`/partner/visit/${id}`));
-  assert.match(messages[0].text, /verify payment and accept/);
-  assert.equal(messages[1].to, 'patient@test.local');
-  assert.match(messages[1].subject, /request has been received/);
-  assert.match(messages[1].text, /not confirmed yet/);
+  const doctorMessage = messages.find(message => message.to === 'doctor@test.local');
+  const patientMessage = messages.find(message => message.to === 'patient@test.local');
+  assert.ok(doctorMessage.html.includes(`/partner/visit/${id}`));
+  assert.match(doctorMessage.text, /verify payment and accept/);
+  assert.match(patientMessage.subject, /request has been received/);
+  assert.match(patientMessage.text, /not confirmed yet/);
   session = { user: { id: 'doctor', role: 'PARTNER' } };
   const context = { params: Promise.resolve({ id }) };
   assert.equal((await confirm({ json: async () => ({}) }, context)).status, 400);
-  assert.equal((await doctorVisit.PUT({ json: async () => ({ status: 'ON_THE_WAY' }) }, context)).status, 503);
+  assert.equal((await doctorVisit.PUT({ json: async () => ({ status: 'ON_THE_WAY' }) }, context)).status, 409);
   const detail = await doctorVisit.GET({}, context);
   assert.equal(detail.body.visit.has_receipt, true);
   assert.equal(detail.body.visit.patient_email, 'patient@test.local');
@@ -676,8 +678,96 @@ test('declined requests cannot be accepted and cannot send booking confirmation'
   assert.equal((await doctorVisit.PUT({ json: async () => ({ status: 'CANCELLED' }) }, context)).status, 200);
   assert.equal((await confirm({ json: async () => ({ paymentVerified: true }) }, context)).status, 409);
   assert.equal((await db.query('SELECT * FROM invoices')).rows.length, 0);
-  assert.equal(messages.length, 2);
+  assert.equal(messages.length, 4);
+  assert.equal(messages.filter(m => /has been cancelled/.test(m.subject)).length, 2);
   assert.equal(messages.some(m => /appointment is confirmed/.test(m.subject)), false);
+});
+
+test('patient cancellation saves an optional reason and sends escaped emails to both parties once', async () => {
+  await booking();
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  const context = { params: Promise.resolve({ id: 'booking' }) };
+  const reason = '<script>alert("test")</script> & change of plans';
+  const request = { json: async () => ({ status: 'CANCELLED', cancellationReason: `  ${reason}  ` }) };
+  const responses = await Promise.all([patientVisit.PATCH(request, context), patientVisit.PATCH(request, context)]);
+  assert.deepEqual(responses.map(r => r.status).sort(), [200, 409]);
+  assert.equal((await db.query('SELECT cancellation_reason FROM bookings')).rows[0].cancellation_reason, reason);
+  assert.equal((await db.query('SELECT * FROM appointment_status_events')).rows.length, 1);
+  assert.equal(messages.length, 2);
+  for (const message of messages) {
+    assert.ok(message.text.includes(`Reason: ${reason}`));
+    assert.ok(message.html.includes('&lt;script&gt;'));
+    assert.ok(!message.html.includes('<script>'));
+    assert.ok(message.text.includes(message.to.startsWith('doctor') ? '/partner/visit/booking' : '/patient/appointments/booking'));
+  }
+  assert.equal((await runCron()).body.sent, 0);
+  assert.equal(messages.length, 2);
+});
+
+test('cancellation reason validation, ownership and terminal state prevent unauthorized edits', async () => {
+  await booking();
+  const context = { params: Promise.resolve({ id: 'booking' }) };
+  const request = reason => ({ json: async () => ({ status: 'CANCELLED', cancellationReason: reason }) });
+  for (const [id, role, api] of [['other', 'PATIENT', patientVisit.PATCH], ['doctor2', 'PARTNER', doctorVisit.PUT]]) {
+    session = { user: { id, role } };
+    assert.equal((await api(request('Not mine'), context)).status, 409);
+  }
+  for (const [role, api] of [['PATIENT', patientVisit.PATCH], ['PARTNER', doctorVisit.PUT], ['ADMIN', (req) => dispatch({ json: async () => ({ ...await req.json(), bookingId: 'booking' }) })]]) {
+    session = { user: { id: role === 'PATIENT' ? 'patient' : role === 'PARTNER' ? 'doctor' : 'admin', role } };
+    for (const value of [42, {}, 'x'.repeat(501)]) assert.equal((await api(request(value), context)).status, 400);
+  }
+  assert.equal((await db.query('SELECT status FROM bookings')).rows[0].status, 'PENDING');
+  assert.equal(messages.length, 0);
+  session = { user: { id: 'doctor', role: 'PARTNER' } };
+  assert.equal((await doctorVisit.PUT(request('   '), context)).status, 200);
+  assert.equal((await db.query('SELECT cancellation_reason FROM bookings')).rows[0].cancellation_reason, null);
+  assert.ok(messages.every(message => message.text.includes('No reason was provided.')));
+  assert.equal((await doctorVisit.PUT(request('Changed reason'), context)).status, 409);
+  assert.equal((await db.query('SELECT cancellation_reason FROM bookings')).rows[0].cancellation_reason, null);
+});
+
+test('cancellation survives SMTP failure and cron retries only the failed recipient with the saved reason', async () => {
+  await booking();
+  smtpFails = 'patient@test.local';
+  const context = { params: Promise.resolve({ id: 'booking' }) };
+  const response = await doctorVisit.PUT({ json: async () => ({ status: 'CANCELLED', cancellationReason: 'Doctor unavailable' }) }, context);
+  assert.equal(response.status, 200);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].to, 'doctor@test.local');
+  smtpFails = false;
+  await db.exec("UPDATE appointment_emails SET due_at = NOW() WHERE kind = 'PATIENT_CANCELLED'");
+  await Promise.all([runCron(), runCron()]);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].to, 'patient@test.local');
+  assert.match(messages[1].text, /Reason: Doctor unavailable/);
+});
+
+test('admin cancellation notifies both parties; unassigned cancellation notifies only the patient', async () => {
+  await booking();
+  session = { user: { id: 'admin', role: 'ADMIN' } };
+  assert.equal((await dispatch({ json: async () => ({ bookingId: 'booking', status: 'CANCELLED', cancellationReason: 'Clinic closed' }) })).status, 200);
+  assert.equal(messages.length, 2);
+  assert.ok(messages.every(message => message.text.includes('Reason: Clinic closed')));
+  await booking('unassigned');
+  await db.exec("UPDATE bookings SET partner_id = NULL WHERE id = 'unassigned'");
+  session = { user: { id: 'patient', role: 'PATIENT' } };
+  assert.equal((await patientVisit.PATCH({ json: async () => ({ status: 'CANCELLED' }) }, { params: Promise.resolve({ id: 'unassigned' }) })).status, 200);
+  assert.equal(messages.length, 3);
+  assert.equal(messages[2].to, 'patient@test.local');
+});
+
+test('cancellation and notification jobs roll back together if event storage fails', async () => {
+  await booking();
+  await db.exec(`CREATE FUNCTION reject_cancellation() RETURNS TRIGGER LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test storage failure'; END $$;
+    CREATE TRIGGER reject_cancellation BEFORE INSERT ON appointment_emails FOR EACH ROW EXECUTE FUNCTION reject_cancellation()`);
+  try {
+    session = { user: { id: 'patient', role: 'PATIENT' } };
+    const response = await patientVisit.PATCH({ json: async () => ({ status: 'CANCELLED', cancellationReason: 'Change of plans' }) }, { params: Promise.resolve({ id: 'booking' }) });
+    assert.equal(response.status, 503);
+    const row = (await db.query('SELECT status, cancellation_reason FROM bookings')).rows[0];
+    assert.equal(row.status, 'PENDING'); assert.equal(row.cancellation_reason, null);
+    assert.equal((await db.query('SELECT * FROM appointment_status_events')).rows.length, 0);
+  } finally { await db.exec('DROP TRIGGER reject_cancellation ON appointment_emails; DROP FUNCTION reject_cancellation()'); }
 });
 
 test('UPI links require an explicit UPI ID, encode payment details and target the chosen Android app', () => {

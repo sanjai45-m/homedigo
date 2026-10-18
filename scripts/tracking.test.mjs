@@ -39,7 +39,7 @@ const get = async () => { const result = await api.GET({}, ctx); return { status
 before(async () => {
   await db.exec(`CREATE TABLE addresses (id TEXT PRIMARY KEY, user_id TEXT, lat FLOAT, lng FLOAT);
     CREATE TABLE bookings (id TEXT PRIMARY KEY, booking_number TEXT, user_id TEXT, partner_id TEXT, address_id TEXT,
-      patient_lat FLOAT, patient_lng FLOAT, partner_lat FLOAT, partner_lng FLOAT, status TEXT, payment_status TEXT,
+      patient_lat FLOAT, patient_lng FLOAT, partner_lat FLOAT, partner_lng FLOAT, status TEXT, cancellation_reason TEXT, payment_status TEXT,
       doctor_confirmed_at TIMESTAMPTZ, partner_location_updated_at TIMESTAMPTZ, partner_location_accuracy FLOAT);`);
 });
 beforeEach(async () => {

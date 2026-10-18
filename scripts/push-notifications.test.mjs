@@ -52,6 +52,8 @@ deps['@/lib/tracking'] = load('src/lib/tracking.ts');
 deps['@/lib/doctor-reminders'] = load('src/lib/doctor-reminders.ts');
 const reminderSettings = load('src/app/api/pro/reminders/route.ts');
 const locationRoute = load('src/app/api/pro/visits/[id]/location/route.ts');
+deps['@/lib/cancellation'] = load('src/lib/cancellation.ts');
+deps['@/lib/appointment-notifications'] = { processAppointmentNotificationsSafely: worker.processAppointmentPushSafely };
 const visitRoute = load('src/app/api/pro/visits/[id]/route.ts');
 const subscriptions = load('src/app/api/push/subscriptions/route.ts');
 const configRoute = load('src/app/api/push/config/route.ts');
@@ -280,15 +282,35 @@ test('confirmation is immediate; reminders wait and reach patient and doctor', a
   assert.equal(messages.length, 4);
   assert.deepEqual(messages.filter(m => m.fid === doctorFid).map(m => m.data.body).sort(), [worker.pushContent('DOCTOR_REMINDER', 'booking', 15).body, worker.pushContent('DOCTOR_REMINDER', 'booking', 30).body].sort());
 });
-test('cancelled appointments suppress pending messages and notify the patient once', async () => {
+test('cancelled appointments suppress pending messages and notify patient and doctor once', async () => {
   await requestEvents();
   await db.exec("UPDATE bookings SET status = 'CANCELLED'");
   await worker.processAppointmentPush();
   await worker.processAppointmentPush();
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].data.title, 'Appointment cancelled');
-  assert.equal(messages[0].fid, patientFid);
+  assert.equal(messages.length, 2);
+  assert.ok(messages.every(m => m.data.title === 'Appointment cancelled'));
+  assert.deepEqual(messages.map(m => m.fid).sort(), [patientFid, doctorFid].sort());
 });
+test('cancellation pushes include the saved reason and retry only failed devices', async () => {
+  session = { id: 'doctor', role: 'PARTNER' };
+  sendError = 'messaging/server-unavailable';
+  const reason = 'Unable to attend. Please book another day.';
+  const response = await visitRoute.PUT(request({ status: 'CANCELLED', cancellationReason: reason }, 'PUT'), { params: Promise.resolve({ id: 'booking' }) });
+  assert.equal(response.status, 200);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].fid, doctorFid);
+  assert.equal(messages[0].data.body, `Reason: ${reason}`);
+  // Event text is an immutable snapshot, even if an unrelated database edit happens later.
+  await db.exec("UPDATE bookings SET cancellation_reason = 'edited'; UPDATE appointment_push_deliveries SET due_at = NOW()");
+  sendError = null;
+  await Promise.all([worker.processAppointmentPush(), worker.processAppointmentPush()]);
+  assert.equal(messages.length, 2);
+  assert.equal(messages[1].fid, patientFid);
+  assert.equal(messages[1].data.body, `Reason: ${reason}`);
+  assert.equal(messages[1].data.path, '/patient/appointments/booking');
+  assert.equal(messages[0].data.path, '/partner/visit/booking');
+});
+
 test('reassigned doctors, expired appointments and password changes suppress stale pushes', async () => {
   await requestEvents();
   await db.exec("UPDATE bookings SET partner_id = 'someone-else'; UPDATE users SET password_changed_at = NOW() WHERE id = 'patient'");

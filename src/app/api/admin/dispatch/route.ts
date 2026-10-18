@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, executePartnerQuery, isDbConfigured } from '@/lib/db';
 import { sendDoctorAppointmentEmail } from '@/lib/email';
 import { processAppointmentPushSafely } from '@/lib/appointment-push';
+import { cancellationReason } from '@/lib/cancellation';
+import { processAppointmentNotificationsSafely } from '@/lib/appointment-notifications';
 import { ensureDoctorScheduleSchema, readDoctorSlots } from '@/lib/doctor-schedule-store';
 
 export const maxDuration = 60;
@@ -38,6 +40,12 @@ export async function PUT(request: Request) {
     }
     const body = await request.json();
     const { bookingId, status, partnerId, partnerName, partnerTitle } = body;
+    let reason = null;
+    if (status === 'CANCELLED') {
+      try { reason = cancellationReason(body.cancellationReason); }
+      catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+      if (partnerId) return NextResponse.json({ error: 'Cancel and reassign appointments separately.' }, { status: 400 });
+    }
 
     if (!bookingId) {
       return NextResponse.json({ error: 'Booking ID is required' }, { status: 400 });
@@ -82,8 +90,9 @@ export async function PUT(request: Request) {
              partner_name = COALESCE($3, partner_name),
              partner_title = COALESCE($4, partner_title),
              appointment_ends_at = COALESCE($6::timestamptz, appointment_ends_at),
-             slot_reserved_until = COALESCE($7::timestamptz, slot_reserved_until)
-         WHERE id = $5 AND ($8::text IS NULL OR (
+             slot_reserved_until = COALESCE($7::timestamptz, slot_reserved_until),
+             cancellation_reason = CASE WHEN $1 = 'CANCELLED' THEN $9 ELSE cancellation_reason END
+         WHERE id = $5 AND status NOT IN ('CANCELLED', 'COMPLETED') AND ($8::text IS NULL OR (
            EXISTS (SELECT 1 FROM partner_profiles p JOIN doctor_schedules s ON s.user_id = p.user_id
              WHERE p.user_id = $2 AND p.availability = 'AVAILABLE' AND p.verification_status = 'APPROVED' AND s.version = $8)
            AND target.appointment_starts_at > clock_timestamp()
@@ -92,12 +101,13 @@ export async function PUT(request: Request) {
              AND COALESCE(occupied.slot_reserved_until, occupied.appointment_ends_at, occupied.appointment_starts_at + INTERVAL '1 hour') > target.appointment_starts_at)
          ))
          RETURNING *`,
-        [status, partnerId, partnerName, partnerTitle, bookingId, assignedSlot?.end || null, assignedSlot?.reservedUntil || null, scheduleVersion]
+        [status, partnerId, partnerName, partnerTitle, bookingId, assignedSlot?.end || null, assignedSlot?.reservedUntil || null, scheduleVersion, reason]
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
         const booking = updateRes.rows[0];
-        await processAppointmentPushSafely(booking.id);
+        if (status === 'CANCELLED') await processAppointmentNotificationsSafely(booking.id);
+        else await processAppointmentPushSafely(booking.id);
 
         // Notify Doctor via Email if partner assigned
         if (partnerId) {
@@ -124,7 +134,7 @@ export async function PUT(request: Request) {
     }
 
     return NextResponse.json({ error: 'Booking dispatch could not be saved.' }, { status: 503 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to update dispatch' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'Failed to update dispatch. Please retry.' }, { status: 503 });
   }
 }

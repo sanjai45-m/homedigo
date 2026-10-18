@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { executeQuery, isDbConfigured } from '@/lib/db';
 import { ensureAppointmentSchema } from '@/lib/appointment-schema';
 import { processAppointmentPushSafely } from '@/lib/appointment-push';
+import { cancellationReason } from '@/lib/cancellation';
+import { processAppointmentNotificationsSafely } from '@/lib/appointment-notifications';
 
 export const maxDuration = 60;
 
@@ -52,6 +54,11 @@ export async function PUT(
     await ensureAppointmentSchema();
     const body = await request.json();
     const { status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes } = body;
+    let reason = null;
+    if (status === 'CANCELLED') {
+      try { reason = cancellationReason(body.cancellationReason); }
+      catch (error) { return NextResponse.json({ error: (error as Error).message }, { status: 400 }); }
+    }
     if (status && !['ON_THE_WAY', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'].includes(status)) {
       return NextResponse.json({ error: 'Use Confirm Availability on your dashboard to confirm an appointment.' }, { status: 400 });
     }
@@ -64,22 +71,26 @@ export async function PUT(
              vital_pulse = COALESCE($3, vital_pulse),
              vital_spo2 = COALESCE($4, vital_spo2),
              vital_sugar = COALESCE($5, vital_sugar),
-             prescription_notes = COALESCE($6, prescription_notes)
+             prescription_notes = COALESCE($6, prescription_notes),
+             cancellation_reason = CASE WHEN $1 = 'CANCELLED' THEN $9 ELSE cancellation_reason END
          WHERE id = $7 AND partner_id = $8
            AND (status NOT IN ('CANCELLED', 'COMPLETED') OR $1::text IS NULL OR $1 = status)
+           AND ($1 IS DISTINCT FROM 'CANCELLED' OR status NOT IN ('CANCELLED', 'COMPLETED'))
            AND (doctor_confirmed_at IS NOT NULL AND payment_status = 'PAID' OR $1 = 'CANCELLED')
          RETURNING *`,
-        [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id, user.id]
+        [status, vitalBp, vitalPulse, vitalSpo2, vitalSugar, prescriptionNotes, id, user.id, reason]
       );
 
       if (updateRes.isConnected && updateRes.rows.length > 0) {
-        if (status) await processAppointmentPushSafely(id);
+        if (status === 'CANCELLED') await processAppointmentNotificationsSafely(id);
+        else if (status) await processAppointmentPushSafely(id);
         return NextResponse.json({ success: true, visit: updateRes.rows[0] });
       }
+      if (updateRes.isConnected) return NextResponse.json({ error: 'Appointment has changed or cannot be updated. Refresh and try again.' }, { status: 409 });
     }
 
     return NextResponse.json({ error: 'Appointment could not be updated.' }, { status: 503 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Failed to update visit' }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'Failed to update visit. Please retry.' }, { status: 503 });
   }
 }
