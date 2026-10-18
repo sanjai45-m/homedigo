@@ -101,6 +101,15 @@ function BookServiceContent() {
   const [paymentRef, setPaymentRef] = useState('');
   const [requestKey, setRequestKey] = useState('');
   const [checkoutError, setCheckoutError] = useState('');
+  const [submittedBooking, setSubmittedBooking] = useState<{ id: string } | null>(null);
+  const submissionInFlight = useRef(false);
+  const submissionNotice = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (submittedBooking) {
+      submissionNotice.current?.focus({ preventScroll: true });
+      submissionNotice.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [submittedBooking]);
   useEffect(() => {
     if (showSignIn && authRequired) document.getElementById('booking-sign-in')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }, [showSignIn, authRequired, currentStep]);
@@ -159,6 +168,7 @@ function BookServiceContent() {
     if (sessionStatus === 'loading') return;
     let active = true;
     if (userId && lastPatientId.current && lastPatientId.current !== userId) {
+      setSubmittedBooking(null);
       setPaymentReceipt(''); setPaymentRef(''); setClinicalNotes(''); setRequestKey(crypto.randomUUID());
       setSelectedProfileId(''); setSelectedAddressId('');
     }
@@ -404,7 +414,7 @@ function BookServiceContent() {
   const tax = Number((totalAmount - subtotal).toFixed(2));
 
   const handleFinalCheckout = async () => {
-    if (loading) return;
+    if (submissionInFlight.current || submittedBooking) return;
     setCheckoutError('');
     if (authRequired) { requestSignIn(); return; }
     if (paymentBlockedReason) { setCheckoutError(paymentBlockedReason); return; }
@@ -426,6 +436,7 @@ function BookServiceContent() {
       return;
     }
 
+    submissionInFlight.current = true;
     setLoading(true);
     try {
       const payload = {
@@ -460,16 +471,17 @@ function BookServiceContent() {
         setCheckoutError(data.error || 'Could not submit your request. Please retry; do not pay again.');
         return;
       }
-      try { sessionStorage.removeItem(draftKey); } catch {}
-      if (data.booking?.id) {
-        router.push(`/patient/appointments/${data.booking.id}`);
-      } else {
-        router.push('/patient/appointments');
+      if (data.success !== true || typeof data.booking?.id !== 'string' || !data.booking.id) {
+        setCheckoutError('We could not confirm your submission. Retry with the same receipt; do not pay again.');
+        return;
       }
+      try { sessionStorage.removeItem(draftKey); } catch {}
+      setSubmittedBooking({ id: data.booking.id });
     } catch (err) {
       console.error('Booking checkout error:', err);
       setCheckoutError('Could not submit your request. Check your connection and retry with the same receipt; do not pay again.');
     } finally {
+      submissionInFlight.current = false;
       setLoading(false);
     }
   };
@@ -1051,7 +1063,7 @@ function BookServiceContent() {
 
         {/* STEP 5: UPI CHECKOUT & CONFIRMATION */}
         {currentStep === 5 && (
-          <div className="space-y-6 animate-in fade-in duration-150">
+          <fieldset disabled={loading || Boolean(submittedBooking)} className="min-w-0 space-y-6 animate-in fade-in duration-150">
             <div className="border-b border-slate-100 pb-3">
               <h2 className="text-lg font-bold text-slate-900 font-heading">
                 5. Payment & Receipt Upload
@@ -1064,6 +1076,10 @@ function BookServiceContent() {
               <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Booking Summary
               </h3>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-700">
+                <span>{scheduledDate} · {scheduledSlot} (IST)</span>
+                {!submittedBooking && <button type="button" onClick={() => { setCheckoutError(''); setCurrentStep(3); }} className="font-bold text-teal-700 underline disabled:opacity-50">Change appointment time</button>}
+              </div>
               <div className="flex justify-between text-xs font-semibold text-slate-800">
                 <span>{selectedService?.title || 'Selected Healthcare Service'}</span>
                 <span>₹{baseRate.toFixed(2)}</span>
@@ -1114,7 +1130,7 @@ function BookServiceContent() {
             </label>
             {!authRequired && <p className="text-xs text-slate-500">Booking confirmation will be emailed to {userEmail} after the doctor accepts your request.</p>}
 
-          </div>
+          </fieldset>
         )}
 
         {/* Bottom Navigation Actions */}
@@ -1122,11 +1138,20 @@ function BookServiceContent() {
           <p>{detailsError}</p>
           <button type="button" disabled={isInitialLoading} onClick={() => setAuthRevision(value => value + 1)} className="mt-2 font-bold underline">Retry loading booking details</button>
         </div>}
-        {checkoutError && <p role="alert" className="text-sm text-red-700">{checkoutError}</p>}
+        {checkoutError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {currentStep === 5 && <p className="font-bold">Request not submitted</p>}
+          <p>{checkoutError}</p>
+        </div>}
+        {submittedBooking && <div ref={submissionNotice} tabIndex={-1} role="status" aria-live="polite" className="scroll-mt-24 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
+          <div className="flex items-center gap-2 font-bold"><CheckCircle2 className="h-5 w-5 shrink-0" aria-hidden="true" />Request submitted successfully</div>
+          <p className="mt-2 text-sm">Your payment receipt and appointment request have been received. Your doctor will review the receipt before accepting your appointment.</p>
+          <p className="mt-2 text-sm">You will receive an email after the doctor accepts. You do not need to pay or submit again.</p>
+        </div>}
         {currentStep === 5 && !authRequired && !paymentBlockedReason && !paymentReceipt && <p className="text-sm text-slate-600">Upload your payment receipt to enable appointment submission.</p>}
         <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-          {currentStep > 1 ? (
+          {currentStep > 1 && !submittedBooking ? (
             <button
+              disabled={loading}
               onClick={() => setCurrentStep((prev) => (prev - 1) as any)}
               className="px-5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors"
             >
@@ -1137,7 +1162,11 @@ function BookServiceContent() {
             <div />
           )}
 
-          {currentStep < 5 ? (
+          {submittedBooking ? (
+            <button type="button" onClick={() => router.push(`/patient/appointments/${encodeURIComponent(submittedBooking.id)}`)} className="px-6 py-3 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-sm flex items-center gap-2">
+              View appointment <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : currentStep < 5 ? (
             <button
               onClick={continueBooking}
               className="px-6 py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-teal-700/20 transition-all"

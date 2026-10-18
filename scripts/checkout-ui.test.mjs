@@ -166,7 +166,8 @@ test('switching from staff to patient requires a refreshed patient session befor
 
 async function bookingView({ draft = false, empty = false, failed = false } = {}) {
   const Checkout = () => null;
-  const state = { failed, saveFails: false };
+  const state = { failed, saveFails: false, submissions: [], navigations: [], removedDrafts: [],
+    bookingResponse: response({ success: true, booking: { id: 'booking-test' } }) };
   const record = { profiles: empty ? [] : [{ id: 'profile', user_id: 'patient', full_name: 'Test Patient' }],
     addresses: empty ? [] : [{ id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' }],
     services: [{ id: 'srv_doc', title: 'Home visit', base_price: '500', visiting_fee: '50' }],
@@ -174,6 +175,10 @@ async function bookingView({ draft = false, empty = false, failed = false } = {}
   const view = harness('src/app/patient/book/page.tsx', {
     fetch: async (url, options) => {
       if (options?.method === 'POST') {
+        if (url === '/api/patient/bookings') {
+          state.submissions.push(JSON.parse(options.body));
+          return state.bookingResponse;
+        }
         if (state.saveFails) return { ok: false, status: 503, json: async () => ({ error: 'Storage is unavailable.' }) };
         return response(url.endsWith('profiles') ? { profile: { id: 'profile', user_id: 'patient', full_name: 'Test Patient' } }
           : { address: { id: 'address', user_id: 'patient', address_line1: 'Test address', city: 'Chennai' } });
@@ -181,12 +186,12 @@ async function bookingView({ draft = false, empty = false, failed = false } = {}
       if (state.failed && url.includes('/api/patient/')) return { ok: false, status: 503, json: async () => ({ error: 'Storage is unavailable.' }) };
       return response(record);
     }, document: { getElementById: () => null },
-    sessionStorage: { getItem: () => draft ? JSON.stringify({ savedAt: Date.now(), selectedServiceId: 'srv_doc',
+    sessionStorage: { removeItem: key => state.removedDrafts.push(key), getItem: () => draft ? JSON.stringify({ savedAt: Date.now(), selectedServiceId: 'srv_doc',
       selectedProfileId: 'profile', selectedAddressId: 'address', selectedPartnerId: 'doctor',
       scheduledDate: '2099-03-01', scheduledSlot: '10:00 AM - 11:00 AM', clinicalNotes: '', requestKey: 'test-request' }) : null },
   }, {
     'next-auth/react': { useSession: () => ({ status: 'authenticated', data: { user: { id: 'patient', role: 'PATIENT' } } }) },
-    'next/navigation': { useRouter: () => ({ push() {} }), useSearchParams: () => new URLSearchParams() },
+    'next/navigation': { useRouter: () => ({ push: url => state.navigations.push(url) }), useSearchParams: () => new URLSearchParams() },
     'lucide-react': new Proxy({}, { get: (_, key) => key }), '@/lib/geo': {},
     '@/components/shared/LocationPicker': () => null, '@/components/auth/CheckoutSignIn': () => null,
     '@/components/PaymentCheckout': Checkout, '@/lib/appointment-time': {},
@@ -195,6 +200,59 @@ async function bookingView({ draft = false, empty = false, failed = false } = {}
   render(); await view.flush();
   return { render, view, state, Checkout };
 }
+
+test('successful submission stays on checkout with a notification and an explicit appointment link', async () => {
+  const { render, state, Checkout } = await bookingView({ draft: true });
+  all(render(), node => node.type === Checkout)[0].props.onReceipt('test-receipt');
+  const submit = button(render(), 'Submit Receipt');
+  const pending = submit.props.onClick();
+  await submit.props.onClick();
+  assert.equal(button(render(), 'Submitting for Review').props.disabled, true);
+  await pending;
+  const tree = render();
+  const notice = all(tree, node => node.props?.role === 'status')[0];
+  assert.match(text(notice), /Request submitted successfully/);
+  assert.match(text(notice), /before accepting your appointment/);
+  assert.equal(state.submissions.length, 1);
+  assert.equal(state.submissions[0].paymentReceipt, 'test-receipt');
+  assert.deepEqual(state.navigations, []);
+  assert.deepEqual(state.removedDrafts, ['homedigo-payment-draft-patient']);
+  assert.equal(button(tree, 'Submit Receipt'), undefined);
+  assert.equal(button(tree, 'Back'), undefined);
+  assert.equal(all(tree, node => node.type === 'fieldset')[0].props.disabled, true);
+  button(tree, 'View appointment').props.onClick();
+  assert.deepEqual(state.navigations, ['/patient/appointments/booking-test']);
+});
+
+test('failed or unconfirmed submissions keep the receipt and never show a success notification', async () => {
+  for (const result of [
+    { ok: false, status: 400, json: async () => ({ error: 'Please choose a future appointment time.' }) },
+    response({}),
+    response({ success: true, booking: {} }),
+  ]) {
+    const { render, state, Checkout } = await bookingView({ draft: true });
+    state.bookingResponse = result;
+    all(render(), node => node.type === Checkout)[0].props.onReceipt('test-receipt');
+    await button(render(), 'Submit Receipt').props.onClick();
+    const tree = render();
+    assert.match(text(tree), /Request not submitted/);
+    assert.doesNotMatch(text(tree), /Request submitted successfully/);
+    assert.equal(all(tree, node => node.type === Checkout)[0].props.receipt, 'test-receipt');
+    assert.deepEqual(state.removedDrafts, []);
+    assert.deepEqual(state.navigations, []);
+    assert.equal(button(tree, 'Submit Receipt').props.disabled, false);
+    button(tree, 'Change appointment time').props.onClick();
+    button(render(), 'Tomorrow').props.onClick();
+    button(render(), 'Continue').props.onClick();
+    button(render(), 'Continue').props.onClick();
+    assert.equal(all(render(), node => node.type === Checkout)[0].props.receipt, 'test-receipt');
+    state.bookingResponse = response({ success: true, booking: { id: 'booking-test' } });
+    await button(render(), 'Submit Receipt').props.onClick();
+    assert.match(text(render()), /Request submitted successfully/);
+    assert.equal(state.submissions[1].scheduledDate, 'Tomorrow');
+    assert.equal(state.submissions[1].requestKey, state.submissions[0].requestKey);
+  }
+});
 
 test('signed-in patients cannot skip an empty patient and address step', async () => {
   const { render } = await bookingView({ empty: true });
