@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+# Firebase Admin SDK keys are server credentials, never source files.
+*-firebase-adminsdk-*.json
 
 # debug
 npm-debug.log*
