@@ -101,6 +101,14 @@ npm run build
 
 ### Payment receipt and doctor acceptance
 
+Checkout also offers **Show payment QR** for a configured, non-demo UPI ID. The QR
+contains the recipient, appointment amount in INR and booking reference. Patients
+can scan it on another device or download the PNG and select it in their UPI app's
+gallery scanner. Showing/downloading the QR uses the same booking prerequisites as
+opening a payment app. A changed amount or recipient hides the previously shown QR.
+QR generation happens locally in the browser and does not confirm a payment or
+bypass bank/app restrictions; receipt upload and payment verification still apply.
+
 The final booking step opens Google Pay or PhonePe with the saved UPI ID and amount on
 supported mobile browsers. Copying the phone number is a separate manual-payment action.
 Without a configured UPI ID, only the manual-payment action is shown. Desktop users

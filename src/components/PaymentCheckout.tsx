@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { QRCodeCanvas } from 'qrcode.react';
 import { DEMO_UPI_ID, MAX_RECEIPT_BYTES, upiPaymentLink } from '@/lib/payment';
 import type { PaymentSettings } from '@/lib/payment-settings';
 
@@ -18,6 +19,32 @@ export default function PaymentCheckout({ amount, reference, receipt, onReceipt,
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
+  const [shownQr, setShownQr] = useState('');
+  const qrCanvas = useRef<HTMLCanvasElement>(null);
+  const qrValue = config && config.upiId !== DEMO_UPI_ID && amount >= 0.01 && reference
+    ? upiPaymentLink('UPI', config.upiId, config.payeeName, amount, reference) : '';
+
+  function showQr() {
+    if (paymentBlockedReason || !qrValue || !beforeOpen()) return;
+    onMethod('UPI');
+    setShownQr(qrValue);
+    setMessage('Scan the QR or download it and select it from your payment app’s gallery scanner. Check the recipient and amount before paying.');
+  }
+
+  function downloadQr() {
+    if (paymentBlockedReason || !qrValue || shownQr !== qrValue || !qrCanvas.current || !beforeOpen()) return;
+    try {
+      const link = document.createElement('a');
+      link.href = qrCanvas.current.toDataURL('image/png');
+      link.download = `homedigo-payment-${amount.toFixed(2)}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      onMethod('UPI');
+    } catch {
+      setMessage('The QR could not be downloaded. Scan it from another device or take a screenshot.');
+    }
+  }
   async function loadConfig() {
     setConfigError('');
     try {
@@ -85,6 +112,18 @@ export default function PaymentCheckout({ amount, reference, receipt, onReceipt,
       <p className="text-sm text-slate-700">Pay <strong>₹{amount.toFixed(2)}</strong> to phone number <strong className="select-all">{config.phone}</strong>.</p>
       {config.upiId && <p className="text-xs text-slate-600">UPI ID: <span className="select-all">{config.upiId}</span></p>}
       {config.upiId === DEMO_UPI_ID && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Demo payment link.</strong> This dummy UPI ID cannot receive payments. The clinic must replace it with a real linked UPI ID before collecting payments.</p>}
+      {qrValue && <div className="rounded-xl border border-teal-200 bg-white p-4 space-y-3">
+        <p className="font-semibold text-slate-900">Scan to pay ₹{amount.toFixed(2)}</p>
+        <p className="text-sm text-slate-600">The QR includes the recipient and appointment amount.</p>
+        <button type="button" onClick={showQr} disabled={Boolean(paymentBlockedReason)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">Show payment QR</button>
+        {!paymentBlockedReason && shownQr === qrValue && <div className="space-y-3">
+          <QRCodeCanvas ref={qrCanvas} value={qrValue} size={256} marginSize={4} level="M" bgColor="#ffffff" fgColor="#000000" role="img" aria-label={`Payment QR for ${config.payeeName}, ₹${amount.toFixed(2)}`} style={{ width: '100%', maxWidth: 256, height: 'auto' }} />
+          <p className="text-sm text-slate-700">Pay <strong>{config.payeeName}</strong> · ₹{amount.toFixed(2)}</p>
+          <button type="button" onClick={downloadQr} className="rounded-xl border border-teal-600 px-4 py-3 text-sm font-semibold text-teal-900">Download QR</button>
+          <p className="text-xs text-slate-600">On this phone, download the QR and choose it in your UPI app’s gallery scanner. On another phone, scan it directly. Confirm the amount before paying, then return here to upload your receipt.</p>
+          <p className="text-xs text-slate-600">Bank and UPI app limits still apply. Showing or scanning the QR does not confirm payment.</p>
+        </div>}
+      </div>}
       <p className="text-xs text-slate-600">{config.upiId ? 'On your phone, tap an app to open the payment screen with the recipient and amount filled in.' : 'Direct app payment is not configured. For manual payment, copy the number and enter it in your payment app.'}</p>
       <fieldset disabled={Boolean(paymentBlockedReason)} className="flex flex-wrap gap-3 disabled:opacity-50">
         {config.upiId && <>

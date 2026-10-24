@@ -32,6 +32,7 @@ function harness(path, globals = {}, dependencies = {}, extra = '') {
     ...globals, require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
+      if (name === 'qrcode.react') return { QRCodeCanvas: 'payment-qr-canvas' };
       if (name === '@/components/appointments/AppointmentSlots') return { __esModule: true, default: 'appointment-slots', useAppointmentSlots: () => ({ slots: [{ label: '10:00 AM - 11:00 AM', available: true }], error: '', loading: false, retry() {} }) };
       if (name === '@/components/shared/FeedbackToast') return 'feedback-toast';
       if (name === '@/components/PushNotifications') return () => null;
@@ -333,6 +334,70 @@ test('blocked payment still allows an existing receipt to be uploaded without op
   input.props.onChange({ target: { files: [{ type: 'image/png', size: 50 }] } });
   await view.flush();
   assert.equal(receipt, 'existing-receipt');
+});
+
+test('payment QR requires booking checks, encodes the amount and invalidates stale details', async () => {
+  const methods = [];
+  const downloads = [];
+  const view = harness('src/components/PaymentCheckout.tsx', {
+    fetch: async () => response({ phone: '9361557446', upiId: 'test-clinic@upi', payeeName: 'Test & Clinic' }),
+    document: { body: { appendChild() {} }, createElement: () => ({
+      click() { downloads.push({ href: this.href, filename: this.download }); }, remove() {},
+    }) },
+  }, { '@/lib/payment': payment });
+  const props = { amount: 550.25, reference: 'booking-qr-test', receipt: '', beforeOpen: () => false,
+    onMethod: method => methods.push(method), onReceipt() {} };
+  const qr = tree => all(tree, node => node.type === 'payment-qr-canvas');
+  view.render(props); await view.flush();
+  assert.equal(qr(view.render(props)).length, 0);
+  button(view.render(props), 'Show payment QR').props.onClick();
+  assert.equal(qr(view.render(props)).length, 0);
+  props.beforeOpen = () => true;
+  button(view.render(props), 'Show payment QR').props.onClick();
+  let tree = view.render(props);
+  const payload = new URL(qr(tree)[0].props.value);
+  assert.equal(payload.protocol, 'upi:');
+  assert.equal(payload.hostname, 'pay');
+  assert.equal(payload.searchParams.get('pa'), 'test-clinic@upi');
+  assert.equal(payload.searchParams.get('pn'), 'Test & Clinic');
+  assert.equal(payload.searchParams.get('am'), '550.25');
+  assert.equal(payload.searchParams.get('cu'), 'INR');
+  assert.equal(payload.searchParams.get('tr'), 'booking-qr-test');
+  assert.deepEqual(methods, ['UPI']);
+  qr(tree)[0].props.ref.current = { toDataURL: type => { assert.equal(type, 'image/png'); return 'data:image/png;base64,test'; } };
+  button(tree, 'Download QR').props.onClick();
+  assert.deepEqual(downloads, [{ href: 'data:image/png;base64,test', filename: 'homedigo-payment-550.25.png' }]);
+  assert.deepEqual(methods, ['UPI', 'UPI']);
+  // Blocked bookings cannot continue displaying or downloading a payment QR.
+  props.paymentBlockedReason = 'Choose another appointment time.';
+  tree = view.render(props);
+  assert.equal(qr(tree).length, 0);
+  assert.equal(button(tree, 'Show payment QR').props.disabled, true);
+  button(tree, 'Show payment QR').props.onClick();
+  assert.deepEqual(methods, ['UPI', 'UPI']);
+  props.paymentBlockedReason = '';
+  props.amount = 600;
+  assert.equal(qr(view.render(props)).length, 0);
+  button(view.render(props), 'Show payment QR').props.onClick();
+  assert.equal(new URL(qr(view.render(props))[0].props.value).searchParams.get('am'), '600.00');
+  props.reference = 'different-booking';
+  assert.equal(qr(view.render(props)).length, 0);
+  for (const amount of [0, -1, NaN, Infinity, 0.001]) {
+    props.amount = amount;
+    assert.equal(button(view.render(props), 'Show payment QR'), undefined);
+  }
+  assert.equal(downloads.length, 1);
+});
+
+test('demo and missing UPI recipients cannot generate payment QR codes', async () => {
+  for (const upiId of [payment.DEMO_UPI_ID, '', 'invalid']) {
+    const view = harness('src/components/PaymentCheckout.tsx', {
+      fetch: async () => response({ phone: '9361557446', upiId, payeeName: 'Clinic' }),
+    }, { '@/lib/payment': payment });
+    const props = { amount: 500, reference: 'test', receipt: '', beforeOpen: () => true, onMethod() {}, onReceipt() {} };
+    view.render(props); await view.flush();
+    assert.equal(button(view.render(props), 'Show payment QR'), undefined);
+  }
 });
 
 test('mobile payment buttons navigate with recipient and amount without clipboard side effects', async () => {
