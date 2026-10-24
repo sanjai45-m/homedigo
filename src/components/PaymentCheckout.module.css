@@ -1,0 +1,155 @@
+.checkout { --payment-ink: #183e3a; --payment-teal: #176b59; --payment-line: #e0e9e2; display: grid; gap: 22px; color: var(--payment-ink); }
+.paymentCard, .receiptCard { background: #fff; border: 1px solid var(--payment-line); border-radius: 22px; box-shadow: 0 5px 24px #194b3d05; overflow: hidden; min-width: 0; }
+.sectionHeader { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 24px 26px; }
+.headingGroup { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.step { display: grid; place-items: center; height: 40px; width: 40px; flex-shrink: 0; border: 1px solid #dce7dc; border-radius: 13px; background: #f5f8ef; color: #6a8a6a; font-size: 12px; font-weight: 700; }
+.eyebrow { font-size: 8px; letter-spacing: 1.5px; font-weight: 700; color: #6e8a79; margin-bottom: 6px; }
+.headingGroup h3 { font-size: 19px; font-weight: 650; letter-spacing: -.5px; line-height: 1.35; }
+.upiBadge, .attached { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid #e1ebe2; border-radius: 7px; color: #5f7d68; font-size: 10px; white-space: nowrap; }
+.amountBanner { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 27px 30px; margin: 0 26px; color: #fff; background: #174f43; background-image: radial-gradient(ellipse at 100% 0%, #347b64 0, transparent 70%); border-radius: 16px; overflow: hidden; }
+.amountBanner::after { content: ''; position: absolute; width: 210px; height: 210px; right: -65px; top: -120px; border-radius: 50%; border: 1px solid #ffffff0d; box-shadow: 0 0 0 30px #ffffff03, 0 0 0 60px #ffffff03; pointer-events: none; }
+.amountBanner > div { position: relative; z-index: 1; min-width: 0; }
+.amountBanner > div > p { font-size: 12px; color: #c9e0d0; }
+.amount { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px; font-size: clamp(30px, 4vw, 42px); font-weight: 600; letter-spacing: -1.5px; line-height: 1.4; font-variant-numeric: tabular-nums; }
+.amount > span { font-size: .65em; color: #cae2bc; font-weight: 500; margin-right: 1px; }
+.amount small { font-size: 9px; color: #bbd4c2; letter-spacing: 1px; margin-left: 5px; }
+.amountCaption { display: block; font-size: 10px; color: #b9d4c4; margin-top: 4px; }
+.recipient { display: flex; align-items: center; gap: 12px; padding-left: 22px; border-left: 1px solid #ffffff26; max-width: 46%; }
+.recipientIcon { display: grid; place-items: center; width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px; color: #d4e7c8; background: #ffffff0d; border: 1px solid #ffffff16; }
+.recipient > div { min-width: 0; }
+.recipient div > span { display: block; font-size: 8px; letter-spacing: 1.6px; color: #b6d1c2; }
+.recipient strong { display: block; font-weight: 600; font-size: 14px; margin-top: 6px; overflow-wrap: anywhere; }
+.recipient p { color: #c5dccd; margin-top: 5px; font-size: 11px; }
+.methods { border: 0; padding: 26px; min-width: 0; display: grid; grid-template-columns: minmax(0,.95fr) minmax(0,1.05fr); gap: 30px; }
+.methods:disabled { opacity: .6; }
+.methods > :only-of-type { grid-column: 1 / -1; }
+.qrPanel { min-width: 0; background: #f7faf4; border: 1px solid #e3ebdd; border-radius: 15px; padding: 19px; display: flex; flex-direction: column; align-items: center; }
+.methodHeading { display: flex; align-items: center; gap: 10px; width: 100%; }
+.methodIcon { width: 35px; height: 35px; display: grid; place-items: center; flex-shrink: 0; color: #527c60; background: #eaf1e4; border-radius: 10px; }
+.methodHeading h4 { font-weight: 650; font-size: 14px; letter-spacing: -.3px; }
+.methodHeading p { font-size: 10px; color: #6c8373; margin-top: 4px; }
+.optionTag { margin-left: auto; font-size: 8px; letter-spacing: 1px; border: 1px solid #dce7d5; border-radius: 5px; padding: 4px 6px; color: #6d8d6b; }
+.qrFrame { width: 100%; max-width: 248px; aspect-ratio: 1; border: 1px solid #dce7d7; border-radius: 16px; margin: 20px auto 14px; padding: 10px; display: grid; place-items: center; background: #fff; box-shadow: 0 5px 12px #1e4e3805; }
+.qrFrame canvas { display: block; max-width: 100%; }
+.qrPlaceholder { display: flex; flex-direction: column; align-items: center; width: 100%; text-align: center; }
+.qrSymbol { color: #88a789; background: #f4f8ef; padding: 13px; border: 1px solid #e9efdf; border-radius: 17px; margin-bottom: 12px; }
+.qrPlaceholder p { font-size: 13px; font-weight: 600; }
+.qrPlaceholder > span:not(.qrSymbol) { color: #7a8e79; font-size: 9px; margin-top: 4px; }
+.showQr { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; background: #226954; border: 1px solid #226954; color: #fff; padding: 10px 14px; border-radius: 9px; margin-top: 14px; font-size: 11px; font-weight: 650; }
+.showQr:hover { background: #164f3f; }
+.showQr:disabled { opacity: .5; cursor: not-allowed; }
+.qrHint { text-align: center; color: #6d836e; font-size: 10px; line-height: 1.8; max-width: 240px; }
+.download { display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: #2f6f50; border: 1px solid #d7e4d0; border-radius: 8px; background: #fff; padding: 9px 14px; min-height: 44px; font-size: 11px; font-weight: 600; margin-bottom: 10px; }
+.download:hover { background: #edf4e7; }
+.appPanel { min-width: 0; padding-top: 4px; }
+.appPanel .methodIcon { background: #f1f4f6; color: #64818f; }
+.appButtons { display: grid; gap: 10px; margin-top: 20px; }
+.appButton { min-height: 75px; display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; padding: 13px 15px; border-radius: 12px; border: 1px solid #e0e7e1; background: #fff; }
+.appButton:hover { border-color: #9abdac; background: #f7faf5; box-shadow: 0 3px 10px #183e3a07; }
+.appButton:disabled { cursor: not-allowed; }
+.appButton > svg { margin-left: auto; color: #829b8e; flex-shrink: 0; }
+.appText { min-width: 0; }
+.appText strong { display: block; font-size: 12px; font-weight: 650; color: #284b3d; }
+.appText small { display: block; font-size: 10px; color: #738779; margin-top: 5px; line-height: 1.6; }
+.gpayMark, .phonepeMark, .otherMark { width: 41px; height: 41px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 11px; }
+.gpayMark { gap: 2px; font-family: Arial, sans-serif; border: 1px solid #edf0ee; background: #fff; }
+.gpayMark b { color: #4285f4; font-size: 20px; }
+.gpayMark span { color: #41464c; font-size: 10px; }
+.phonepeMark { background: #6739aa; color: #fff; font-size: 26px; font-weight: 600; border-radius: 50%; }
+.otherMark { background: #eef5e9; color: #5b8060; }
+.manualDetails { margin-top: 19px; }
+.manualTitle { display: flex; align-items: center; justify-content: center; gap: 10px; color: #88998b; font-size: 8px; font-weight: 600; letter-spacing: 1px; margin-bottom: 12px; }
+.manualTitle span { height: 1px; background: #e6ece4; flex: 1; }
+.copyRow { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 7px 0; }
+.copyRow > div { min-width: 0; }
+.copyRow div > span { display: block; font-size: 8px; letter-spacing: 1px; color: #7b8d7f; margin-bottom: 5px; }
+.copyRow strong { font-size: 12px; font-weight: 500; overflow-wrap: anywhere; user-select: all; }
+.copyRow button { min-width: 44px; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 5px; color: #52795c; background: #f1f6ec; border: 1px solid #e2eadb; border-radius: 8px; flex-shrink: 0; padding: 8px; font-size: 9px; }
+.copyRow button:disabled { opacity: .5; }
+.copyRow button:hover { background: #e6efdd; }
+.paymentNote { display: flex; gap: 9px; align-items: flex-start; padding: 17px 26px; background: #fafcf8; border-top: 1px solid #e8eee3; color: #71816d; font-size: 10px; line-height: 1.8; }
+.paymentNote svg, .message svg, .warning > svg { flex-shrink: 0; margin-top: 1px; }
+.message, .warning { display: flex; gap: 9px; align-items: start; font-size: 12px; line-height: 1.8; border-radius: 10px; padding: 13px 15px; margin: 18px 26px; }
+.message { background: #eef5ef; color: #3f6f52; border: 1px solid #dbe9dc; }
+.warning { background: #fff6e7; color: #815c28; border: 1px solid #efdfc5; }
+.warning button { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; text-decoration: underline; min-height: 44px; }
+.loading { padding: 25px; display: flex; justify-content: center; align-items: center; gap: 9px; font-size: 12px; color: #6c8577; }
+.receiptCard .sectionHeader { padding-bottom: 17px; }
+.attached { background: #eef6eb; color: #477349; border-color: #dcead6; }
+.receiptBody { padding: 0 26px 24px; }
+.receiptIntro { font-size: 12px; color: #6d8072; line-height: 1.8; margin-bottom: 17px; }
+.uploadZone { display: flex; position: relative; flex-direction: column; align-items: center; gap: 8px; padding: 23px 18px; text-align: center; background: #fcfdf9; border: 1px dashed #b9cdb0; border-radius: 13px; cursor: pointer; }
+.uploadZone:hover { background: #f5f9f0; border-color: #7eac80; }
+.uploadZone:focus-within { outline: 3px solid #b6cfaa; outline-offset: 3px; }
+.uploadZone:has(input:disabled) { opacity: .6; cursor: wait; }
+.fileInput { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.uploadIcon { display: grid; place-items: center; width: 45px; height: 45px; background: #eef4e6; color: #769569; border-radius: 14px; margin-bottom: 3px; }
+.uploadZone > strong { font-size: 13px; font-weight: 600; color: #3d5f45; }
+.uploadZone > span:not(.uploadIcon):not(.browseLabel) { font-size: 10px; color: #7c907b; }
+.browseLabel { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; color: #4d794d; padding-top: 5px; }
+.receiptChecklist { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; margin-top: 17px; }
+.receiptChecklist > span { display: inline-flex; align-items: center; gap: 5px; color: #5f7e5e; font-size: 10px; }
+.checklistHint { text-align: center; margin-top: 9px; font-size: 10px; color: #788d76; line-height: 1.7; }
+.receiptBody .warning { margin-inline: 0; }
+.receiptPreview { margin-top: 20px; border: 1px solid #dfe9d9; border-radius: 12px; overflow: hidden; background: #f7f9f4; }
+.previewHeader { display: flex; align-items: center; justify-content: space-between; padding: 9px 14px; border-bottom: 1px solid #e2eadd; background: #f1f6eb; }
+.previewHeader > span { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: 11px; color: #426a43; font-weight: 600; }
+.previewHeader small { font-size: 9px; color: #73896b; font-weight: 400; }
+.previewHeader button { display: grid; place-items: center; min-height: 44px; min-width: 44px; border-radius: 8px; color: #6c8162; }
+.previewHeader button:hover { background: #e4edda; }
+.receiptPreview img { width: 100%; max-height: 300px; object-fit: contain; padding: 12px; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 767px) {
+  .sectionHeader { padding: 20px; }
+  .headingGroup { gap: 10px; }
+  .headingGroup h3 { font-size: 17px; }
+  .upiBadge { display: none; }
+  .amountBanner { margin-inline: 20px; padding: 23px; }
+  .methods { padding: 20px; gap: 18px; }
+  .qrPanel { padding: 14px; }
+  .appButton { gap: 9px; padding: 12px; }
+  .appText strong { font-size: 11px; }
+  .appText small { font-size: 9px; }
+  .qrPlaceholder > span:not(.qrSymbol) { font-size: 8px; }
+  .qrSymbol { padding: 8px; }
+  .showQr { font-size: 10px; gap: 5px; padding-inline: 8px; }
+  .copyRow button > span { display: none; }
+  .recipient { gap: 8px; padding-left: 14px; }
+  .recipientIcon { display: none; }
+  .paymentNote { padding: 16px 20px; }
+  .message, .warning { margin-inline: 20px; }
+  .receiptBody { padding: 0 20px 20px; }
+}
+@media (max-width: 580px) {
+  .checkout { gap: 18px; }
+  .sectionHeader { padding: 18px 16px; gap: 8px; }
+  .eyebrow { font-size: 7px; letter-spacing: 1.2px; }
+  .headingGroup h3 { font-size: 16px; }
+  .step { width: 34px; height: 34px; font-size: 10px; border-radius: 10px; }
+  .amountBanner { margin-inline: 16px; padding: 21px; flex-direction: column; align-items: stretch; gap: 19px; }
+  .amount { font-size: 38px; }
+  .recipient { border-left: 0; border-top: 1px solid #ffffff20; padding: 15px 0 0; max-width: none; gap: 12px; }
+  .recipientIcon { display: grid; width: 34px; height: 34px; }
+  .recipient strong { font-size: 13px; }
+  .recipient p { font-size: 11px; }
+  .methods { grid-template-columns: minmax(0,1fr); padding: 18px 16px; gap: 24px; }
+  .qrPanel { padding: 18px; }
+  .qrFrame { max-width: 248px; }
+  .qrPlaceholder > span:not(.qrSymbol) { font-size: 10px; }
+  .qrSymbol { padding: 13px; }
+  .showQr { font-size: 12px; padding-inline: 14px; gap: 8px; }
+  .qrHint { font-size: 11px; }
+  .appButton { padding: 14px; min-height: 76px; gap: 13px; }
+  .appText strong { font-size: 13px; }
+  .appText small { font-size: 11px; }
+  .copyRow strong { font-size: 13px; }
+  .paymentNote { padding: 16px; font-size: 11px; }
+  .message, .warning { margin-inline: 16px; font-size: 11px; }
+  .receiptBody { padding: 0 16px 20px; }
+  .receiptChecklist { gap: 8px 12px; }
+  .receiptIntro { font-size: 11px; }
+  .uploadZone > strong { font-size: 12px; }
+  .attached { font-size: 9px; padding: 5px 7px; }
+}
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

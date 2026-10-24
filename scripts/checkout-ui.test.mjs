@@ -28,11 +28,13 @@ function harness(path, globals = {}, dependencies = {}, extra = '') {
   const source = ts.transpileModule(readFileSync(path, 'utf8') + extra, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true,
   } }).outputText;
-  vm.runInNewContext(source, { exports, console, Buffer, URL, URLSearchParams, crypto, AbortController, setInterval: () => 0, clearInterval() {}, window: { addEventListener() {}, removeEventListener() {} }, process: { env: {} },
+  vm.runInNewContext(source, { exports, console, Buffer, URL, URLSearchParams, crypto, AbortController, queueMicrotask, setInterval: () => 0, clearInterval() {}, window: { addEventListener() {}, removeEventListener() {} }, process: { env: {} },
     ...globals, require(name) {
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return jsx;
       if (name === 'qrcode.react') return { QRCodeCanvas: 'payment-qr-canvas' };
+      if (name === './PaymentCheckout.module.css') return {};
+      if (name === 'lucide-react' && !(name in dependencies)) return new Proxy({}, { get: (_, key) => key });
       if (name === '@/components/appointments/AppointmentSlots') return { __esModule: true, default: 'appointment-slots', useAppointmentSlots: () => ({ slots: [{ label: '10:00 AM - 11:00 AM', available: true }], error: '', loading: false, retry() {} }) };
       if (name === '@/components/shared/FeedbackToast') return 'feedback-toast';
       if (name === '@/components/PushNotifications') return () => null;

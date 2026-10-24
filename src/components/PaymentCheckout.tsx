@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
+import { ArrowDownToLine, ArrowUpRight, Check, CheckCircle2, Copy, FileImage, Info, Landmark, Loader2, QrCode, Smartphone, UploadCloud, Wallet, X } from 'lucide-react';
 import { DEMO_UPI_ID, MAX_RECEIPT_BYTES, upiPaymentLink } from '@/lib/payment';
 import type { PaymentSettings } from '@/lib/payment-settings';
+import styles from './PaymentCheckout.module.css';
 
 export default function PaymentCheckout({ amount, reference, receipt, onReceipt, onMethod, beforeOpen, paymentBlockedReason = '' }: {
   amount: number;
@@ -45,19 +47,24 @@ export default function PaymentCheckout({ amount, reference, receipt, onReceipt,
       setMessage('The QR could not be downloaded. Scan it from another device or take a screenshot.');
     }
   }
-  async function loadConfig() {
+  async function loadConfig(signal?: AbortSignal) {
     setConfigError('');
     try {
-      const response = await fetch('/api/patient/payment', { cache: 'no-store' });
+      const response = await fetch('/api/patient/payment', { cache: 'no-store', signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Payment details are unavailable.');
-      setConfig(data);
+      if (!signal?.aborted) setConfig(data);
     } catch {
+      if (signal?.aborted) return;
       setConfig(null);
       setConfigError('Payment details could not be loaded. Please retry before paying.');
     }
   }
-  useEffect(() => { void loadConfig(); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    queueMicrotask(() => { if (!controller.signal.aborted) void loadConfig(controller.signal); });
+    return () => controller.abort();
+  }, []);
 
   function openApp(app: 'GPAY' | 'PHONEPE' | 'UPI') {
     if (paymentBlockedReason || !config || !beforeOpen()) return;
@@ -78,6 +85,12 @@ export default function PaymentCheckout({ amount, reference, receipt, onReceipt,
     if (paymentBlockedReason || !config || !beforeOpen()) return;
     try { await navigator.clipboard.writeText(config.phone); setMessage('Phone number copied for manual payment.'); }
     catch { setMessage(`Copy this number manually: ${config.phone}`); }
+  }
+
+  async function copyUpiId() {
+    if (paymentBlockedReason || !config?.upiId || config.upiId === DEMO_UPI_ID || !beforeOpen()) return;
+    try { await navigator.clipboard.writeText(config.upiId); setMessage('UPI ID copied. Open your payment app, paste the ID and check the recipient before paying.'); }
+    catch { setMessage(`Copy this UPI ID manually: ${config.upiId}`); }
   }
 
   async function upload(file?: File) {
@@ -101,50 +114,67 @@ export default function PaymentCheckout({ amount, reference, receipt, onReceipt,
     finally { setReading(false); }
   }
 
-  return <div className="space-y-5">
-    <div className="rounded-2xl border border-teal-200 bg-teal-50 p-5 space-y-3">
-      <h3 className="font-bold text-slate-900">1. Pay with Google Pay or PhonePe</h3>
-      {paymentBlockedReason && <p role="status" className="text-sm text-amber-900">{paymentBlockedReason} You can upload an existing payment receipt below.</p>}
-      {configError ? <div role="alert" className="text-sm text-red-700">
-        <p>{configError}</p><button type="button" onClick={() => void loadConfig()} className="mt-2 font-bold underline">Retry loading payment details</button>
-      </div> : !config && <p role="status" className="text-sm text-slate-600">Loading payment details…</p>}
+  const qrVisible = Boolean(qrValue && !paymentBlockedReason && shownQr === qrValue);
+  return <div className={styles.checkout}>
+    <section className={styles.paymentCard} aria-labelledby="payment-heading">
+      <header className={styles.sectionHeader}>
+        <div className={styles.headingGroup}><span className={styles.step}>01</span><div><p className={styles.eyebrow}>ONE STEP CLOSER TO CARE</p><h3 id="payment-heading">Make your payment</h3></div></div>
+        <span className={styles.upiBadge}><Wallet size={14} aria-hidden="true" />UPI payment</span>
+      </header>
+      <div className={styles.amountBanner}>
+        <div><p>Appointment total</p><div className={styles.amount}><span>₹</span>{amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}<small>INR</small></div><span className={styles.amountCaption}>Pay the amount shown for your visit</span></div>
+        <div className={styles.recipient}><span className={styles.recipientIcon}><Landmark size={20} aria-hidden="true" /></span><div><span>PAYING TO</span><strong>{config?.payeeName || 'Loading recipient…'}</strong>{config && <p>{config.phone}</p>}</div></div>
+      </div>
+      {paymentBlockedReason && <p role="status" className={styles.warning}><Info size={17} /> <span>{paymentBlockedReason} You can upload an existing payment receipt below.</span></p>}
+      {configError ? <div role="alert" className={styles.warning}><Info size={18} /><div><p>{configError}</p><button type="button" onClick={() => void loadConfig()}>Retry loading payment details <ArrowUpRight size={15} /></button></div></div>
+        : !config && <p role="status" className={styles.loading}><Loader2 size={18} className={styles.spin} />Loading payment details…</p>}
       {config && <>
-      <p className="text-sm text-slate-700">Pay <strong>₹{amount.toFixed(2)}</strong> to phone number <strong className="select-all">{config.phone}</strong>.</p>
-      {config.upiId && <p className="text-xs text-slate-600">UPI ID: <span className="select-all">{config.upiId}</span></p>}
-      {config.upiId === DEMO_UPI_ID && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Demo payment link.</strong> This dummy UPI ID cannot receive payments. The clinic must replace it with a real linked UPI ID before collecting payments.</p>}
-      {qrValue && <div className="rounded-xl border border-teal-200 bg-white p-4 space-y-3">
-        <p className="font-semibold text-slate-900">Scan to pay ₹{amount.toFixed(2)}</p>
-        <p className="text-sm text-slate-600">The QR includes the recipient and appointment amount.</p>
-        <button type="button" onClick={showQr} disabled={Boolean(paymentBlockedReason)} className="rounded-xl bg-teal-700 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">Show payment QR</button>
-        {!paymentBlockedReason && shownQr === qrValue && <div className="space-y-3">
-          <QRCodeCanvas ref={qrCanvas} value={qrValue} size={256} marginSize={4} level="M" bgColor="#ffffff" fgColor="#000000" role="img" aria-label={`Payment QR for ${config.payeeName}, ₹${amount.toFixed(2)}`} style={{ width: '100%', maxWidth: 256, height: 'auto' }} />
-          <p className="text-sm text-slate-700">Pay <strong>{config.payeeName}</strong> · ₹{amount.toFixed(2)}</p>
-          <button type="button" onClick={downloadQr} className="rounded-xl border border-teal-600 px-4 py-3 text-sm font-semibold text-teal-900">Download QR</button>
-          <p className="text-xs text-slate-600">On this phone, download the QR and choose it in your UPI app’s gallery scanner. On another phone, scan it directly. Confirm the amount before paying, then return here to upload your receipt.</p>
-          <p className="text-xs text-slate-600">Bank and UPI app limits still apply. Showing or scanning the QR does not confirm payment.</p>
-        </div>}
-      </div>}
-      <p className="text-xs text-slate-600">{config.upiId ? 'On your phone, tap an app to open the payment screen with the recipient and amount filled in.' : 'Direct app payment is not configured. For manual payment, copy the number and enter it in your payment app.'}</p>
-      <fieldset disabled={Boolean(paymentBlockedReason)} className="flex flex-wrap gap-3 disabled:opacity-50">
-        {config.upiId && <>
-        <button type="button" onClick={() => openApp('GPAY')} className="rounded-xl bg-white border border-slate-300 px-5 py-3 font-bold text-sm text-slate-900">Open Google Pay</button>
-        <button type="button" onClick={() => openApp('PHONEPE')} className="rounded-xl bg-violet-700 px-5 py-3 font-bold text-sm text-white">Open PhonePe</button>
-        {config.upiId && <button type="button" onClick={() => openApp('UPI')} className="rounded-xl border border-teal-600 px-4 py-3 text-sm text-teal-900">Other UPI app</button>}
-        </>}
-        <button type="button" onClick={() => void copyNumber()} className="rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-700">Copy number for manual payment</button>
-      </fieldset>
-      {message && <p role="status" className="text-sm text-teal-900">{message}</p>}
-      <p className="text-xs text-slate-600">Opening an app does not confirm payment. Check that the payment succeeded before uploading.</p>
+        {config.upiId === DEMO_UPI_ID && <p role="status" className={styles.warning}><Info size={18} /><span><strong>Demo payment link.</strong> This dummy UPI ID cannot receive payments. The clinic must replace it with a real linked UPI ID before collecting payments.</span></p>}
+        <fieldset disabled={Boolean(paymentBlockedReason)} className={styles.methods}>
+          <legend className="sr-only">Choose how to pay</legend>
+          {qrValue && <div className={styles.qrPanel}>
+            <div className={styles.methodHeading}><span className={styles.methodIcon}><QrCode size={19} /></span><div><h4>Scan &amp; pay</h4><p>Use any UPI app</p></div><span className={styles.optionTag}>QR</span></div>
+            <div className={styles.qrFrame}>
+              {qrVisible ? <QRCodeCanvas ref={qrCanvas} value={qrValue} size={256} marginSize={4} level="M" bgColor="#ffffff" fgColor="#000000" role="img" aria-label={'Payment QR for ' + config.payeeName + ', ₹' + amount.toFixed(2)} style={{ width: '100%', maxWidth: 224, height: 'auto' }} />
+                : <div className={styles.qrPlaceholder}><span className={styles.qrSymbol}><QrCode size={54} strokeWidth={1.2} aria-hidden="true" /></span><p>Your payment QR</p><span>Recipient &amp; amount included</span><button type="button" onClick={showQr} disabled={Boolean(paymentBlockedReason)} className={styles.showQr}>Show payment QR <ArrowUpRight size={16} /></button></div>}
+            </div>
+            {qrVisible ? <><button type="button" onClick={downloadQr} className={styles.download}><ArrowDownToLine size={16} />Download QR</button><p className={styles.qrHint}>On this phone? Save the QR and choose it from your UPI app’s gallery scanner.</p></> : <p className={styles.qrHint}>Scan from another phone, or save the QR to pay on this device.</p>}
+          </div>}
+          <div className={styles.appPanel}>
+            <div className={styles.methodHeading}><span className={styles.methodIcon}><Smartphone size={19} /></span><div><h4>{config.upiId ? 'Pay with an app' : 'Pay manually'}</h4><p>{config.upiId ? 'Continue on your phone' : 'Use the recipient number below'}</p></div></div>
+            {config.upiId && <div className={styles.appButtons}>
+              <button type="button" onClick={() => openApp('GPAY')} className={styles.appButton}><span className={styles.gpayMark} aria-hidden="true"><b>G</b><span>Pay</span></span><span className={styles.appText}><strong>Open Google Pay</strong><small>Pay from your bank account</small></span><ArrowUpRight size={17} aria-hidden="true" /></button>
+              <button type="button" onClick={() => openApp('PHONEPE')} className={styles.appButton}><span className={styles.phonepeMark} aria-hidden="true">पे</span><span className={styles.appText}><strong>Open PhonePe</strong><small>Continue in PhonePe</small></span><ArrowUpRight size={17} aria-hidden="true" /></button>
+              <button type="button" onClick={() => openApp('UPI')} className={styles.appButton}><span className={styles.otherMark}><Wallet size={22} aria-hidden="true" /></span><span className={styles.appText}><strong>Other UPI app</strong><small>Choose an app on your phone</small></span><ArrowUpRight size={17} aria-hidden="true" /></button>
+            </div>}
+            <div className={styles.manualDetails}>
+              <div className={styles.manualTitle}><span />OR PAY MANUALLY<span /></div>
+              {config.upiId && <div className={styles.copyRow}><div><span>UPI ID</span><strong>{config.upiId}</strong></div><button type="button" onClick={() => void copyUpiId()} disabled={config.upiId === DEMO_UPI_ID} aria-label="Copy UPI ID"><Copy size={16} /></button></div>}
+              <div className={styles.copyRow}><div><span>PHONE NUMBER</span><strong>{config.phone}</strong></div><button type="button" onClick={() => void copyNumber()} aria-label="Copy number for manual payment"><Copy size={16} /><span>Copy number</span></button></div>
+            </div>
+          </div>
+        </fieldset>
+        {message && <p role="status" className={styles.message}><Info size={16} /><span>{message}</span></p>}
+        <div className={styles.paymentNote}><Info size={16} aria-hidden="true" /><p>Check the recipient and amount in your UPI app. Payment is confirmed after your receipt is reviewed. Bank and app limits apply.</p></div>
       </>}
-    </div>
-    <div className="rounded-2xl border border-slate-200 p-5 space-y-3">
-      <label htmlFor="payment-receipt" className="block font-bold text-slate-900">2. Upload your payment receipt</label>
-      <p className="text-xs text-slate-600">Show the recipient, amount, date and transaction ID. Your doctor will review this screenshot before accepting your appointment.</p>
-      <input id="payment-receipt" type="file" accept="image/png,image/jpeg,image/webp" disabled={reading} onChange={e => void upload(e.target.files?.[0])} className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-teal-50 file:px-4 file:py-2 file:text-teal-800" />
-      <p className="text-xs text-slate-500">PNG, JPEG or WebP · Maximum 2 MB</p>
-      {reading && <p role="status">Reading screenshot…</p>}
-      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      {receipt && <img src={receipt} alt="Selected payment receipt" className="max-h-72 rounded-xl border border-slate-200 object-contain" />}
-    </div>
+    </section>
+    <section className={styles.receiptCard} aria-labelledby="receipt-heading">
+      <header className={styles.sectionHeader}><div className={styles.headingGroup}><span className={styles.step}>02</span><div><p className={styles.eyebrow}>AFTER YOU HAVE PAID</p><h3 id="receipt-heading">Add your payment receipt</h3></div></div>{receipt && <span className={styles.attached}><Check size={14} />Attached</span>}</header>
+      <div className={styles.receiptBody}>
+        <p className={styles.receiptIntro}>Upload the payment screenshot so your clinician can verify it before accepting your appointment.</p>
+        <label htmlFor="payment-receipt" className={styles.uploadZone}>
+          <input id="payment-receipt" aria-label="Upload payment receipt" type="file" accept="image/png,image/jpeg,image/webp" disabled={reading} onChange={event => { void upload(event.target.files?.[0]); event.target.value = ''; }} className={styles.fileInput} />
+          <span className={styles.uploadIcon}>{reading ? <Loader2 size={23} className={styles.spin} /> : <UploadCloud size={23} />}</span><strong>{reading ? 'Reading screenshot…' : receipt ? 'Choose a different receipt' : 'Choose your payment screenshot'}</strong><span>PNG, JPEG or WebP · Up to 2 MB</span><span className={styles.browseLabel}>{receipt ? 'Replace receipt' : 'Browse files'} <ArrowUpRight size={14} /></span>
+        </label>
+        <div className={styles.receiptChecklist}><span><CheckCircle2 size={13} />Recipient</span><span><CheckCircle2 size={13} />Amount</span><span><CheckCircle2 size={13} />Date &amp; transaction ID</span></div>
+        <p className={styles.checklistHint}>Make sure these details are visible in your screenshot.</p>
+        {reading && <p role="status" className={styles.loading}>Reading screenshot…</p>}
+        {error && <p role="alert" className={styles.warning}>{error}</p>}
+        {receipt && <div className={styles.receiptPreview}><div className={styles.previewHeader}><span><FileImage size={17} />Receipt attached <small>Ready for review</small></span><button type="button" onClick={() => { onReceipt(''); setError(''); }} aria-label="Remove payment receipt"><X size={17} /></button></div>{/* Local uploaded image; preserve its original pixels for payment review. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={receipt} alt="Selected payment receipt" />
+        </div>}
+      </div>
+    </section>
   </div>;
 }
